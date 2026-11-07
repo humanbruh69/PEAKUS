@@ -1,0 +1,8 @@
+{
+  "name": "Peakus",
+  "description": "Peakus - max your focus. Study and focus with custom YouTube backgrounds, video background uploads, ambient sounds, YouTube music streaming, and Pomodoro timer. Credits: human.exr",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

@@ -1,0 +1,186 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User account data with settings, saved YouTube links, tasks, history, notes, and paused timer state",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "The Firebase Auth user ID"
+        },
+        "email": {
+          "type": "string",
+          "description": "User email address"
+        },
+        "displayName": {
+          "type": "string",
+          "description": "User display name"
+        },
+        "settings": {
+          "type": "object",
+          "description": "User preferences and timer settings"
+        },
+        "savedLinks": {
+          "type": "array",
+          "description": "User saved and pasted YouTube background and music links"
+        },
+        "tasks": {
+          "type": "array",
+          "description": "User tasks and checklists"
+        },
+        "history": {
+          "type": "object",
+          "description": "Historical focus sessions and stats"
+        },
+        "notes": {
+          "type": "string",
+          "description": "User scratchpad notes"
+        },
+        "timer": {
+          "type": "object",
+          "description": "Last paused or idle timer state"
+        },
+        "updatedAt": {
+          "type": "number",
+          "description": "Unix timestamp in ms of last sync"
+        }
+      },
+      "required": ["userId", "updatedAt"]
+    },
+    "StudyRoom": {
+      "title": "StudyRoom",
+      "description": "Collaborative study room where friends focus together in real time",
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string",
+          "description": "Uppercase 6-character unique join code"
+        },
+        "name": {
+          "type": "string",
+          "description": "Study room title"
+        },
+        "hostId": {
+          "type": "string",
+          "description": "Firebase Auth UID of the room creator"
+        },
+        "hostName": {
+          "type": "string",
+          "description": "Display name of the host"
+        },
+        "timerMode": {
+          "type": "string",
+          "description": "Synced or independent timer mode"
+        },
+        "timer": {
+          "type": "object",
+          "description": "Synchronized room timer state"
+        },
+        "theme": {
+          "type": "object",
+          "description": "Shared background preset"
+        },
+        "createdAt": {
+          "type": "number",
+          "description": "Unix timestamp in ms of room creation"
+        },
+        "updatedAt": {
+          "type": "number",
+          "description": "Unix timestamp in ms of last room activity"
+        }
+      },
+      "required": ["code", "name", "hostId", "timerMode", "createdAt", "updatedAt"]
+    },
+    "RoomMember": {
+      "title": "RoomMember",
+      "description": "Member presence record inside a study room",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Firebase Auth UID of the member"
+        },
+        "displayName": {
+          "type": "string",
+          "description": "Member display name"
+        },
+        "status": {
+          "type": "string",
+          "description": "Current status (focusing, break, idle)"
+        },
+        "currentTask": {
+          "type": "string",
+          "description": "Active task title"
+        },
+        "todayFocusMs": {
+          "type": "number",
+          "description": "Focus minutes completed today"
+        },
+        "isHost": {
+          "type": "boolean",
+          "description": "Whether this member is the room host"
+        },
+        "joinedAt": {
+          "type": "number",
+          "description": "Timestamp when member joined"
+        },
+        "lastActive": {
+          "type": "number",
+          "description": "Heartbeat timestamp"
+        }
+      },
+      "required": ["userId", "displayName", "status", "joinedAt", "lastActive"]
+    },
+    "RoomMessage": {
+      "title": "RoomMessage",
+      "description": "Chat message or encouragement reaction sent inside a study room",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Message unique identifier"
+        },
+        "senderId": {
+          "type": "string",
+          "description": "Firebase Auth UID of sender"
+        },
+        "senderName": {
+          "type": "string",
+          "description": "Display name of sender"
+        },
+        "text": {
+          "type": "string",
+          "description": "Text message content or reaction emoji"
+        },
+        "type": {
+          "type": "string",
+          "description": "Type of message: chat, reaction, or system"
+        },
+        "createdAt": {
+          "type": "number",
+          "description": "Timestamp when message was sent"
+        }
+      },
+      "required": ["id", "senderId", "senderName", "text", "type", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "Private user account document storing all synced cloud data"
+    },
+    "/rooms/{roomCode}": {
+      "schema": "StudyRoom",
+      "description": "Study room metadata and shared timer state"
+    },
+    "/rooms/{roomCode}/members/{memberId}": {
+      "schema": "RoomMember",
+      "description": "Presence of active participants in this study room"
+    },
+    "/rooms/{roomCode}/messages/{messageId}": {
+      "schema": "RoomMessage",
+      "description": "Real-time room chat and motivation reaction messages"
+    }
+  }
+}

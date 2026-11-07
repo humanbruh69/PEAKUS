@@ -1,0 +1,30 @@
+{
+  "name": "Peakus - max your focus",
+  "short_name": "Peakus",
+  "description": "Peakus - max your focus. Study and focus with custom YouTube backgrounds, video background uploads, ambient sounds, YouTube music streaming, and Pomodoro timer. Credits: ig;human.ext",
+  "lang": "en",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0d0b1a",
+  "theme_color": "#0d0b1a",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "/icon-maskable.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
