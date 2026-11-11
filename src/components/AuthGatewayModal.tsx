@@ -7,6 +7,7 @@ import {
 } from 'firebase/auth';
 import { auth } from '../lib/firebase';
 import { Icon } from './Icons';
+import { PeakusMountainLogo } from './PeakusMountainLogo';
 
 interface AuthGatewayModalProps {
   onSuccess?: () => void;
@@ -122,20 +123,7 @@ export const AuthGatewayModal: React.FC<AuthGatewayModalProps> = ({
       >
         {/* Brand Header */}
         <div style={{ textAlign: 'center', marginBottom: '28px' }}>
-          <div
-            style={{
-              width: '56px',
-              height: '56px',
-              margin: '0 auto 16px',
-              borderRadius: '16px',
-              background: 'linear-gradient(135deg, #6366f1 0%, #a855f7 100%)',
-              display: 'grid',
-              placeItems: 'center',
-              boxShadow: '0 12px 24px -6px rgba(99, 102, 241, 0.4)',
-            }}
-          >
-            <Icon name="timer" style={{ width: '28px', height: '28px', color: '#ffffff' }} />
-          </div>
+          <PeakusMountainLogo size={60} style={{ margin: '0 auto 16px' }} />
           <h1 style={{ margin: '0 0 6px', fontSize: '24px', fontWeight: 700, letterSpacing: '-0.02em' }}>
             Peakus
           </h1>

@@ -10,7 +10,13 @@ export type ClockStyle =
   | 'serif'
   | 'hand'
   | 'minimal-light'
-  | 'serif-condensed';
+  | 'serif-condensed'
+  | 'outfit'
+  | 'plus-jakarta'
+  | 'dm-sans'
+  | 'fraunces'
+  | 'space-mono'
+  | 'syne';
 export type TimerStyle = 'default' | 'flip' | 'bar' | 'gauge' | 'dots' | 'pie';
 export type TalliesStyle = 'emoji' | 'dots' | 'numbers' | 'none';
 export type QuoteRotation = 'daily' | 'hourly' | 'visit';
@@ -34,6 +40,7 @@ export interface ModeConfig {
   blur: number;
   posX: number;
   posY: number;
+  keyTone?: boolean;
 }
 
 export interface ClockSettings {
@@ -184,6 +191,7 @@ export interface TimerState {
   durationMs: number;
   remainingMs: number;
   elapsedMs?: number;
+  targetEndTime?: number | null;
   runStart?: number | null;
   runs?: [number, number][];
   segStart?: number | null;

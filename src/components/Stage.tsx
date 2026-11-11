@@ -5,7 +5,7 @@ import { fmtClock, dayKey, hashStr } from '../lib/utils';
 import { t, MULTILINGUAL_QUOTES } from '../lib/i18n';
 import { AmbientTimer } from './AmbientTimer';
 import type { PomodoroPreset } from '../lib/presets';
-import { APP_LOGO_SRC } from '../lib/branding';
+import { PeakusMountainLogo } from './PeakusMountainLogo';
 import { resolveTallyEmojis } from '../lib/tallyThemes';
 
 interface StageProps {
@@ -45,6 +45,8 @@ interface StageProps {
   roomOpen?: boolean;
   onOpenRoom?: () => void;
   currentRoomCode?: string | null;
+  studyBotOpen?: boolean;
+  onOpenStudyBot?: () => void;
 }
 
 export const Stage: React.FC<StageProps> = ({
@@ -78,6 +80,8 @@ export const Stage: React.FC<StageProps> = ({
   roomOpen = false,
   onOpenRoom,
   currentRoomCode = null,
+  studyBotOpen = false,
+  onOpenStudyBot,
 }) => {
   const [now, setNow] = useState(new Date());
   const [isEditingLabel, setIsEditingLabel] = useState(false);
@@ -297,20 +301,7 @@ export const Stage: React.FC<StageProps> = ({
 
   return (
     <main className="stage" id="stage">
-      {/* Top Right Minimalist Zen Mode Button (Zero Distraction) */}
-      <button
-        type="button"
-        className={`zen-top-btn ${zenMode ? 'zen-active' : ''}`}
-        id="btnZenTop"
-        aria-label={zenMode ? t('exitZen', lang) : t('zenMode', lang)}
-        title={zenMode ? t('exitZen', lang) : t('zenMode', lang)}
-        onClick={onToggleZen}
-      >
-        <Icon name="zen" />
-        {zenMode && <span className="zen-btn-indicator" />}
-      </button>
-
-      {/* Top Left Logo & Rebranding Tagline */}
+      {/* Top Left Logo & Tagline */}
       {settings.appearance.showLogo && !zenMode && (
         <div
           className="logo fadeable"
@@ -318,18 +309,7 @@ export const Stage: React.FC<StageProps> = ({
           aria-hidden="true"
           style={{ display: 'flex', alignItems: 'center', gap: '12px' }}
         >
-          <img
-            src={APP_LOGO_SRC}
-            alt="Peakus Logo"
-            style={{
-              width: '42px',
-              height: '42px',
-              borderRadius: '12px',
-              objectFit: 'cover',
-              border: '1.5px solid rgba(255, 255, 255, 0.25)',
-              boxShadow: '0 4px 14px rgba(0, 0, 0, 0.5), 0 0 14px rgba(124, 58, 237, 0.35)',
-            }}
-          />
+          <PeakusMountainLogo size={42} />
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
             <span style={{ fontWeight: 800, letterSpacing: '-0.04em' }}>Peakus</span>
             <span
@@ -478,9 +458,7 @@ export const Stage: React.FC<StageProps> = ({
             {/* Session Tallies (Emojis / Dots / Numbers) */}
             {pomo && settings.timer.tallies !== 'none' && !zenMode && (() => {
               const totalCycles = Math.max(1, settings.timer.cycles || 4);
-              const completedInCycle = timerState.phase === 'long' 
-                ? totalCycles 
-                : (timerState.cycle % totalCycles);
+              const completedInCycle = Math.min(totalCycles, Math.max(0, timerState.cycle));
               const isEmoji = settings.timer.tallies === 'emoji';
               const emojis = isEmoji
                 ? resolveTallyEmojis(settings.timer.tallyTheme, settings.timer.customTallyEmojis, totalCycles)
@@ -825,6 +803,46 @@ export const Stage: React.FC<StageProps> = ({
                 : '[ALPHA] Focus with Friends (Experimental)'}
             </span>
           </button>
+
+          {/* Study Bot (Gemini AI Tutor) */}
+          <button
+            className={`ib has-tip ${studyBotOpen ? 'active' : ''}`}
+            id="btnStudyBot"
+            aria-label={t('studyBot', lang)}
+            aria-expanded={studyBotOpen}
+            onClick={onOpenStudyBot}
+            style={{
+              position: 'relative',
+              ...(studyBotOpen
+                ? {
+                    borderColor: 'var(--accent)',
+                    backgroundColor: 'var(--accent-soft)',
+                    color: 'var(--accent-text)',
+                  }
+                : {}),
+            }}
+          >
+            <Icon name="bot" />
+            <span
+              style={{
+                position: 'absolute',
+                top: '-4px',
+                right: '-3px',
+                fontSize: '8px',
+                fontWeight: 800,
+                padding: '1px 3px',
+                borderRadius: '4px',
+                backgroundColor: 'var(--accent)',
+                color: '#000000',
+                letterSpacing: '0.04em',
+                lineHeight: 1,
+                boxShadow: '0 1px 4px rgba(0,0,0,0.4)',
+              }}
+            >
+              AI
+            </span>
+            <span className="tip">{t('studyBot', lang)} (B)</span>
+          </button>
         </nav>
       )}
 
@@ -891,6 +909,16 @@ export const Stage: React.FC<StageProps> = ({
           </div>
 
           <button
+            className="ib has-tip"
+            id="btnZen"
+            aria-label={t('zenMode', lang)}
+            onClick={onToggleZen}
+          >
+            <Icon name="zen" />
+            <span className="tip">{t('zenMode', lang)} (Z)</span>
+          </button>
+
+          <button
             className={`ib has-tip ${settingsOpen ? 'active' : ''}`}
             id="btnSettings"
             aria-label={t('settings', lang)}
@@ -913,6 +941,20 @@ export const Stage: React.FC<StageProps> = ({
             </span>
           </button>
         </nav>
+      )}
+
+      {/* Floating Zen Mode Exit Pill (Unobtrusive, centered at bottom) */}
+      {zenMode && (
+        <button
+          type="button"
+          className="zen-exit-pill"
+          aria-label={t('exitZen', lang)}
+          title={`${t('exitZen', lang)} (Z / Esc)`}
+          onClick={onToggleZen}
+        >
+          <Icon name="zen" />
+          <span>{t('exitZen', lang)}</span>
+        </button>
       )}
     </main>
   );

@@ -2,6 +2,7 @@ import { doc, getDoc, setDoc, onSnapshot, Unsubscribe } from 'firebase/firestore
 import { db, auth } from './firebase';
 import { Settings, TimerState, Task, HistoryState, Session } from '../types';
 import { getSavedLinks, setAllSavedLinks, SavedLinkItem } from './savedLinks';
+import { PomodoroPreset, getCustomPresets, setAllCustomPresets, DEFAULT_PRESETS } from './presets';
 import { DEFAULTS } from './constants';
 import { Store } from './store';
 
@@ -18,6 +19,7 @@ export interface CloudUserData {
     clearedAt?: number;
   };
   notes?: string;
+  presets?: PomodoroPreset[];
   timer?: {
     status?: string;
     phase?: string;
@@ -25,6 +27,15 @@ export interface CloudUserData {
     durationMs?: number;
     cycle?: number;
   } | null;
+  pomodoro?: {
+    focusMinutes: number;
+    shortBreakMinutes: number;
+    longBreakMinutes: number;
+    targetTally: number;
+    selectedTallyIcon: string;
+    cycleTally: number;
+    focusStats: Record<string, any>;
+  };
   updatedAt: number;
 }
 
@@ -110,28 +121,62 @@ export async function fetchUserCloudData(userId: string): Promise<CloudUserData 
 }
 
 /**
- * Initialize a brand-new user document in Firestore with clean defaults or existing verified sessions
+ * Completely wipe all user-specific local state and cache from this device.
+ * Used during logout and account switching to guarantee zero cross-account data leaks.
+ */
+export function clearLocalDeviceWorkspace(): void {
+  try {
+    setAllSavedLinks([], false);
+    Store.saveSessions([]);
+    Store.saveTaskItems([]);
+    Store.saveNotes('', 0);
+    setAllCustomPresets(DEFAULT_PRESETS, false);
+    Store.saveSettings(DEFAULTS);
+    if (typeof localStorage !== 'undefined') {
+      localStorage.removeItem('peakus.saved_youtube_links');
+      localStorage.removeItem('peakus.task_items');
+      localStorage.removeItem('peakus.sessions');
+      localStorage.removeItem('peakus.notes');
+      localStorage.removeItem('peakus.custom_pomodoro_presets');
+      localStorage.removeItem('peakus.settings');
+      localStorage.removeItem('peakus.studybot.messages');
+      localStorage.removeItem('peakus.focus_stats.v1');
+    }
+    Store.saveFocusStats({});
+  } catch (err) {
+    console.warn('Error clearing local workspace:', err);
+  }
+}
+
+/**
+ * Initialize a brand-new user document in Firestore with pristine clean defaults.
+ * CRITICAL: NEVER inherits or copies whatever was in this device's localStorage!
  */
 export async function initializeNewUserCloud(userId: string): Promise<void> {
   try {
     if (!userId) return;
     const userRef = doc(db, 'users', userId);
-    const existingSessions = Store.loadSessions();
-    const existingTasks = Store.loadTaskItems();
-    const existingLinks = getSavedLinks();
-    const existingNotes = Store.loadNotes();
-    const existingSettings = Store.loadSettings();
 
     const initialData: CloudUserData = {
       userId,
       email: auth.currentUser?.email || undefined,
       displayName: auth.currentUser?.displayName || undefined,
-      settings: cleanSettingsForCloud(existingSettings || DEFAULTS),
-      savedLinks: existingLinks,
-      tasks: existingTasks,
-      history: { sessions: existingSessions },
-      notes: existingNotes,
+      settings: cleanSettingsForCloud(DEFAULTS),
+      savedLinks: [],
+      tasks: [],
+      history: { sessions: [] },
+      notes: '',
+      presets: DEFAULT_PRESETS,
       timer: null,
+      pomodoro: {
+        focusMinutes: 25,
+        shortBreakMinutes: 5,
+        longBreakMinutes: 15,
+        targetTally: 4,
+        selectedTallyIcon: 'growing_tree',
+        cycleTally: 0,
+        focusStats: {},
+      },
       updatedAt: Date.now(),
     };
     await setDoc(userRef, JSON.parse(JSON.stringify(initialData)));
@@ -152,6 +197,9 @@ export async function pushAllToCloud(
     customTasks?: Task[];
     customNotes?: string;
     customSavedLinks?: SavedLinkItem[];
+    customPresets?: PomodoroPreset[];
+    customDisplayName?: string;
+    customFocusStats?: Record<string, any>;
   }
 ): Promise<void> {
   try {
@@ -159,7 +207,6 @@ export async function pushAllToCloud(
     const userRef = doc(db, 'users', userId);
 
     // Sync timer ONLY if paused or idle
-    // "if a timer is on in one device then if they switch to a other device on the same account it shouldnt sync, it should only sync when the user pauses the timer."
     const timerToSync =
       currentTimer.status === 'paused' || currentTimer.status === 'idle'
         ? {
@@ -188,22 +235,41 @@ export async function pushAllToCloud(
       return item;
     });
     const userNotes = options?.customNotes ?? Store.loadNotes();
+    const userPresets = options?.customPresets ?? getCustomPresets();
+    const userDisplayName =
+      options?.customDisplayName ??
+      auth.currentUser?.displayName ??
+      currentSettings.name ??
+      undefined;
 
     const payload: Partial<CloudUserData> = {
       userId,
       email: auth.currentUser?.email || undefined,
-      displayName: auth.currentUser?.displayName || undefined,
+      displayName: userDisplayName,
       settings: cleanSettingsForCloud(currentSettings),
       savedLinks: userLinks,
       tasks: userTasks,
       history: { sessions: userSessions },
       notes: userNotes,
+      presets: userPresets,
       updatedAt: Date.now(),
     };
 
     if (timerToSync !== undefined) {
       payload.timer = timerToSync;
     }
+
+    // Persist Flocus Pomodoro settings, cycleTally, and daily focusStats
+    const currentFocusStats = options?.customFocusStats ?? Store.loadFocusStats();
+    payload.pomodoro = {
+      focusMinutes: Number(currentSettings.timer?.focus) || 25,
+      shortBreakMinutes: Number(currentSettings.timer?.short) || 5,
+      longBreakMinutes: Number(currentSettings.timer?.long) || 15,
+      targetTally: Number(currentSettings.timer?.cycles) || 4,
+      selectedTallyIcon: String(currentSettings.timer?.tallyTheme || 'growing_tree'),
+      cycleTally: Number(currentTimer?.cycle) || 0,
+      focusStats: currentFocusStats || {},
+    };
 
     // Deep sanitize to guarantee zero undefined properties in any nested structure
     const sanitized = JSON.parse(JSON.stringify(payload));
@@ -225,7 +291,10 @@ export function subscribeToCloud(
     onTasks?: (tasks: Task[]) => void;
     onHistory?: (sessions: Session[]) => void;
     onNotes?: (notes: string) => void;
+    onPresets?: (presets: PomodoroPreset[]) => void;
+    onDisplayName?: (displayName: string) => void;
     onPausedTimer?: (timer: any) => void;
+    onPomodoro?: (pomodoro: any) => void;
   },
   isLocalTimerRunning: () => boolean
 ): Unsubscribe {
@@ -241,6 +310,10 @@ export function subscribeToCloud(
       const data = snap.data() as CloudUserData;
       if (handlers.onLoaded) {
         handlers.onLoaded(true);
+      }
+
+      if (data.displayName && typeof data.displayName === 'string' && handlers.onDisplayName) {
+        handlers.onDisplayName(data.displayName);
       }
 
       if (data.settings && handlers.onSettings) {
@@ -263,6 +336,15 @@ export function subscribeToCloud(
 
       if (typeof data.notes === 'string' && handlers.onNotes) {
         handlers.onNotes(data.notes);
+      }
+
+      if (data.presets && Array.isArray(data.presets) && handlers.onPresets) {
+        setAllCustomPresets(data.presets, false);
+        handlers.onPresets(data.presets);
+      }
+
+      if (data.pomodoro && handlers.onPomodoro) {
+        handlers.onPomodoro(data.pomodoro);
       }
 
       // Sync timer if remote timer exists AND local timer is not actively running

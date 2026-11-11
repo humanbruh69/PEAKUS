@@ -12,12 +12,14 @@ import { Store } from './lib/store';
 import { audioX } from './lib/audio';
 import { sync } from './lib/sync';
 import { hexToRgb, fmtClock, fmtDur, uid, dayKey, startOfDay, addDays } from './lib/utils';
+import { DEFAULTS } from './lib/constants';
 import { t } from './lib/i18n';
 import {
   type PomodoroPreset,
   getCustomPresets,
   saveCustomPreset,
   applyPresetToSettings,
+  DEFAULT_PRESETS,
 } from './lib/presets';
 
 import { Background } from './components/Background';
@@ -33,7 +35,7 @@ import { ProPrankModal, PRO_PRANK_KEY } from './components/ProPrankModal';
 import { FlowPromptModal } from './components/FlowPromptModal';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { auth, testConnection } from './lib/firebase';
-import { pushAllToCloud, subscribeToCloud, initializeNewUserCloud, fetchUserCloudData } from './lib/cloudSync';
+import { pushAllToCloud, subscribeToCloud, initializeNewUserCloud, fetchUserCloudData, clearLocalDeviceWorkspace } from './lib/cloudSync';
 import { AuthGatewayModal } from './components/AuthGatewayModal';
 import { ResetSegmentModal } from './components/ResetSegmentModal';
 import { OfflineBackgroundModal } from './components/OfflineBackgroundModal';
@@ -41,6 +43,8 @@ import { StudyRoomModal } from './components/StudyRoomModal';
 import { broadcastRoomTimer, updateMemberPresence, subscribeToStudyRoom } from './lib/studyRooms';
 import { getSavedLinks, setAllSavedLinks, SavedLinkItem } from './lib/savedLinks';
 import { computeStats } from './lib/statsEngine';
+import { StudyBotPopover } from './components/StudyBotPopover';
+import { toLocalDateKey } from './lib/pomodoroEngine';
 
 export const App: React.FC = () => {
   const [settings, setSettings] = useState<Settings>(() => Store.loadSettings());
@@ -106,6 +110,7 @@ export const App: React.FC = () => {
   const [musicOpen, setMusicOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [roomOpen, setRoomOpen] = useState(false);
+  const [studyBotOpen, setStudyBotOpen] = useState(false);
   const [currentRoomCode, setCurrentRoomCode] = useState<string | null>(() => {
     try {
       return localStorage.getItem('peakus.room_code') || null;
@@ -260,10 +265,27 @@ export const App: React.FC = () => {
       }
 
       if (!user) {
+        clearLocalDeviceWorkspace();
         setCurrentUser(null);
+        setSettings(DEFAULTS);
+        setSessions([]);
+        setTasks([]);
+        setPresets(DEFAULT_PRESETS);
+        sessionsRef.current = [];
+        setStudyBotOpen(false);
         setAuthChecking(false);
         cloudLoadedUserRef.current = null;
         return;
+      }
+
+      // If switching from another user, wipe previous user's workspace so no cross-account contamination occurs
+      if (cloudLoadedUserRef.current && cloudLoadedUserRef.current !== user.uid) {
+        clearLocalDeviceWorkspace();
+        setSettings(DEFAULTS);
+        setSessions([]);
+        setTasks([]);
+        setPresets(DEFAULT_PRESETS);
+        sessionsRef.current = [];
       }
 
       setCurrentUser(user);
@@ -298,52 +320,20 @@ export const App: React.FC = () => {
           onSavedLinks: remoteLinks => {
             cloudLoadedUserRef.current = user.uid;
             if (Array.isArray(remoteLinks)) {
-              const current = getSavedLinks();
-              const map = new Map<string, SavedLinkItem>();
-              current.forEach(l => {
-                if (l && l.id) map.set(l.id, l);
-              });
-              remoteLinks.forEach(l => {
-                if (l && l.id) map.set(l.id, l);
-              });
-              const merged = Array.from(map.values()).sort((a, b) => (b.addedAt || 0) - (a.addedAt || 0));
-              setAllSavedLinks(merged, false);
+              setAllSavedLinks(remoteLinks, false);
             }
           },
           onTasks: remoteTasks => {
             cloudLoadedUserRef.current = user.uid;
-            setTasks(remoteTasks);
-            Store.saveTaskItems(remoteTasks);
+            const userTasks = Array.isArray(remoteTasks) ? remoteTasks : [];
+            setTasks(userTasks);
+            Store.saveTaskItems(userTasks);
           },
           onHistory: remoteSessions => {
             cloudLoadedUserRef.current = user.uid;
-            // Robust union merge by session ID: Remote + Local (never wipe verified sessions)
-            const mergedMap = new Map<string, Session>();
-            if (Array.isArray(remoteSessions)) {
-              remoteSessions.forEach(s => {
-                if (s && s.id) mergedMap.set(s.id, s);
-              });
-            }
-            sessionsRef.current.forEach(s => {
-              if (s && s.id && !mergedMap.has(s.id)) {
-                mergedMap.set(s.id, s);
-              }
-            });
-            Store.loadSessions().forEach(s => {
-              if (s && s.id && !mergedMap.has(s.id)) {
-                mergedMap.set(s.id, s);
-              }
-            });
-            const mergedSessions = Array.from(mergedMap.values()).sort((a, b) => b.start - a.start);
-            setSessions(mergedSessions);
-            Store.saveSessions(mergedSessions);
-
-            // If we have local sessions that were missing from remote, push the complete history back to Cloud
-            if (Array.isArray(remoteSessions) && remoteSessions.length < mergedSessions.length) {
-              pushAllToCloud(user.uid, settingsRef.current, timerRef.current, {
-                customHistory: { sessions: mergedSessions },
-              });
-            }
+            const userSessions = Array.isArray(remoteSessions) ? remoteSessions : [];
+            setSessions(userSessions);
+            Store.saveSessions(userSessions);
           },
           onPausedTimer: remoteTimer => {
             cloudLoadedUserRef.current = user.uid;
@@ -357,6 +347,43 @@ export const App: React.FC = () => {
                 durationMs: remoteTimer.durationMs,
                 cycle: remoteTimer.cycle || 0,
               }));
+            }
+          },
+          onPomodoro: remotePomodoro => {
+            cloudLoadedUserRef.current = user.uid;
+            if (remotePomodoro) {
+              if (remotePomodoro.focusStats) {
+                Store.saveFocusStats(remotePomodoro.focusStats);
+              }
+              if (typeof remotePomodoro.cycleTally === 'number' && timerRef.current.status !== 'running') {
+                setTimerState(prev => ({
+                  ...prev,
+                  cycle: remotePomodoro.cycleTally,
+                }));
+              }
+            }
+          },
+          onNotes: remoteNotes => {
+            cloudLoadedUserRef.current = user.uid;
+            if (typeof remoteNotes === 'string') {
+              Store.saveNotes(remoteNotes);
+            }
+          },
+          onPresets: remotePresets => {
+            cloudLoadedUserRef.current = user.uid;
+            if (Array.isArray(remotePresets) && remotePresets.length > 0) {
+              setPresets(remotePresets);
+            }
+          },
+          onDisplayName: remoteName => {
+            cloudLoadedUserRef.current = user.uid;
+            if (typeof remoteName === 'string' && remoteName.trim()) {
+              setSettings(prev => {
+                if (prev.name === remoteName) return prev;
+                const next = { ...prev, name: remoteName };
+                Store.saveSettings(next);
+                return next;
+              });
             }
           },
         },
@@ -516,6 +543,7 @@ export const App: React.FC = () => {
       const tSettings = currentS.timer;
       const currentLang = currentS.language || 'en';
       const now = Date.now();
+      const dateKey = toLocalDateKey(now);
 
       // Record completed session in history
       const newSession: Session = {
@@ -532,14 +560,45 @@ export const App: React.FC = () => {
       const nextSessions = [newSession, ...sessionsRef.current];
       setSessions(nextSessions);
       Store.saveSessions(nextSessions);
-      sync.touch();
 
-      // Immediately sync newly finished session to Cloud
-      if (auth.currentUser) {
-        pushAllToCloud(auth.currentUser.uid, currentS, timerRef.current, {
-          customHistory: { sessions: nextSessions },
-        });
+      // Log completed focus duration and session count to daily historical stats (keyed by YYYY-MM-DD)
+      const currentFocusStats = Store.loadFocusStats();
+      const existingDayStat = currentFocusStats[dateKey] || {
+        date: dateKey,
+        focusMinutes: 0,
+        focusMs: 0,
+        sessionCount: 0,
+        breakMinutes: 0,
+        breakMs: 0,
+      };
+
+      let nextFocusStats = currentFocusStats;
+      if (prevPhase === 'focus') {
+        const updatedDayStat = {
+          ...existingDayStat,
+          focusMs: existingDayStat.focusMs + durationMs,
+          focusMinutes: Math.round((existingDayStat.focusMs + durationMs) / 60000),
+          sessionCount: existingDayStat.sessionCount + 1,
+        };
+        nextFocusStats = {
+          ...currentFocusStats,
+          [dateKey]: updatedDayStat,
+        };
+        Store.saveFocusStats(nextFocusStats);
+      } else {
+        const updatedDayStat = {
+          ...existingDayStat,
+          breakMs: existingDayStat.breakMs + durationMs,
+          breakMinutes: Math.round((existingDayStat.breakMs + durationMs) / 60000),
+        };
+        nextFocusStats = {
+          ...currentFocusStats,
+          [dateKey]: updatedDayStat,
+        };
+        Store.saveFocusStats(nextFocusStats);
       }
+
+      sync.touch();
 
       // Play alert sound
       audioX.playAlert(tSettings.sound, tSettings.volume);
@@ -547,11 +606,12 @@ export const App: React.FC = () => {
       // If flowMode is enabled and focus session ended, ask if user wants to continue their flow (+10 min)
       if (prevPhase === 'focus' && tSettings.flowMode) {
         let nextBreakPhase: TimerPhase = 'short';
-        let nextCycle = timerRef.current.cycle + 1;
+        const nextCycle = timerRef.current.cycle + 1;
+        const targetTally = Math.max(1, tSettings.cycles || 4);
         if (tSettings.mode === 'countdown') {
           nextBreakPhase = 'focus';
         } else {
-          nextBreakPhase = nextCycle % tSettings.cycles === 0 ? 'long' : 'short';
+          nextBreakPhase = nextCycle < targetTally ? 'short' : 'long';
         }
         const nextBreakDuration = getPhaseDuration(nextBreakPhase, currentS);
         pendingBreakRef.current = {
@@ -565,6 +625,7 @@ export const App: React.FC = () => {
           ...prev,
           status: 'paused',
           remainingMs: 0,
+          targetEndTime: null,
         }));
         setShowFlowPrompt(true);
 
@@ -584,34 +645,47 @@ export const App: React.FC = () => {
         return;
       }
 
-      // Determine next phase and auto-start
+      // Flocus Pomodoro State Machine Transitions:
+      // When FOCUS finishes:
+      //   - Increment cycleTally by 1.
+      //   - If cycleTally < targetTally -> transition to SHORT_BREAK.
+      //   - If cycleTally >= targetTally -> transition to LONG_BREAK.
+      // When SHORT_BREAK finishes -> transition back to FOCUS without changing cycleTally.
+      // When LONG_BREAK finishes -> reset cycleTally back to 0 and transition to FOCUS.
       let nextPhase: TimerPhase = 'focus';
       let autoStart = false;
       let nextCycle = timerRef.current.cycle;
+      const targetTally = Math.max(1, tSettings.cycles || 4);
+
       if (tSettings.mode === 'countdown') {
         nextPhase = 'focus';
         autoStart = tSettings.autoBreak;
       } else {
         if (prevPhase === 'focus') {
           nextCycle = timerRef.current.cycle + 1;
-          nextPhase = nextCycle % tSettings.cycles === 0 ? 'long' : 'short';
+          nextPhase = nextCycle < targetTally ? 'short' : 'long';
           autoStart = tSettings.autoBreak;
         } else if (prevPhase === 'long') {
           nextPhase = 'focus';
-          nextCycle = 0; // Reset completed cycle when long break ends
+          nextCycle = 0; // Reset cycleTally to 0 when long break finishes
           autoStart = tSettings.autoFocus;
         } else {
+          // SHORT_BREAK finishes: transition back to FOCUS without changing cycleTally
           nextPhase = 'focus';
+          nextCycle = timerRef.current.cycle; // Keep unchanged
           autoStart = tSettings.autoFocus;
         }
       }
+
       const nextDuration = getPhaseDuration(nextPhase, currentS);
+      const targetEndTime = autoStart ? now + nextDuration : null;
       const nextState: TimerState = {
         status: autoStart ? 'running' : 'idle',
         phase: nextPhase,
         remainingMs: nextDuration,
         durationMs: nextDuration,
         cycle: nextCycle,
+        targetEndTime,
         startedAt: autoStart ? now : null,
         sessionStartedAt: autoStart ? now : null,
         interrupted: false,
@@ -622,6 +696,7 @@ export const App: React.FC = () => {
       if (auth.currentUser && cloudLoadedUserRef.current === auth.currentUser.uid) {
         pushAllToCloud(auth.currentUser.uid, currentS, nextState, {
           customHistory: { sessions: nextSessions },
+          customFocusStats: nextFocusStats,
         });
       }
 
@@ -764,28 +839,57 @@ export const App: React.FC = () => {
   );
 
   const handleSavePreset = useCallback((preset: PomodoroPreset) => {
-    saveCustomPreset(preset);
-    setPresets(getCustomPresets());
+    const updated = saveCustomPreset(preset);
+    setPresets(updated);
+    if (auth.currentUser && cloudLoadedUserRef.current === auth.currentUser.uid) {
+      pushAllToCloud(auth.currentUser.uid, settingsRef.current, timerRef.current, {
+        customPresets: updated,
+      });
+    }
   }, []);
 
-  // Timer Tick Engine (Drift-free, safe outside state updater)
+  const handleUpdateNotes = useCallback((notesText: string) => {
+    if (auth.currentUser && cloudLoadedUserRef.current === auth.currentUser.uid) {
+      pushAllToCloud(auth.currentUser.uid, settingsRef.current, timerRef.current, {
+        customNotes: notesText,
+      });
+    }
+  }, []);
+
+  // Drift-Free Timer Tick Engine using timestamp deltas (targetEndTime - Date.now())
   useEffect(() => {
     if (timerState.status !== 'running') return;
-    let lastTick = Date.now();
-    const interval = setInterval(() => {
-      const now = Date.now();
-      const delta = now - lastTick;
-      lastTick = now;
+
+    const tick = () => {
       const cur = timerRef.current;
-      if (cur.status !== 'running') return;
-      const remaining = cur.remainingMs - delta;
+      if (cur.status !== 'running' || !cur.targetEndTime) return;
+      const now = Date.now();
+      const remaining = Math.max(0, cur.targetEndTime - now);
+
       if (remaining <= 0) {
         handleSegmentEnd(cur.phase, cur.durationMs);
       } else {
         setTimerState(prev => (prev.status === 'running' ? { ...prev, remainingMs: remaining } : prev));
       }
-    }, 200);
-    return () => clearInterval(interval);
+    };
+
+    // Immediate sync on tab visibility or window focus
+    const handleVisibility = () => {
+      if (!document.hidden) {
+        tick();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibility);
+    window.addEventListener('focus', handleVisibility);
+
+    const interval = setInterval(tick, 200);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('focus', handleVisibility);
+    };
   }, [timerState.status, handleSegmentEnd]);
 
   // Sync timer duration if settings change while timer is idle
@@ -799,6 +903,7 @@ export const App: React.FC = () => {
           ...prev,
           durationMs: dur,
           remainingMs: dur,
+          targetEndTime: null,
         };
       });
     }
@@ -815,10 +920,15 @@ export const App: React.FC = () => {
   const handleToggleTimer = () => {
     audioX.ensure();
     const cur = timerRef.current;
+    const now = Date.now();
+
     if (cur.status === 'running') {
+      const rem = cur.targetEndTime ? Math.max(0, cur.targetEndTime - now) : cur.remainingMs;
       const next: TimerState = {
         ...cur,
         status: 'paused',
+        remainingMs: rem,
+        targetEndTime: null,
       };
       setTimerState(next);
       Store.saveTimer(next);
@@ -827,14 +937,15 @@ export const App: React.FC = () => {
         pushAllToCloud(auth.currentUser.uid, settingsRef.current, next);
       }
     } else {
-      const now = Date.now();
       const dur = getPhaseDuration(cur.phase, settings);
       const effectiveRem = cur.remainingMs <= 0 ? dur : cur.remainingMs;
+      const targetEndTime = now + effectiveRem;
       const next: TimerState = {
         ...cur,
         status: 'running',
         remainingMs: effectiveRem,
         durationMs: cur.remainingMs <= 0 ? dur : cur.durationMs,
+        targetEndTime,
         startedAt: cur.startedAt || now,
         sessionStartedAt: cur.sessionStartedAt || now,
       };
@@ -846,20 +957,35 @@ export const App: React.FC = () => {
 
   const handleResetTimer = () => {
     const cur = timerRef.current;
-    const duration = getPhaseDuration(cur.phase, settings);
-    const next: TimerState = {
-      ...cur,
-      status: 'idle',
-      remainingMs: duration,
-      durationMs: duration,
-      startedAt: null,
-      sessionStartedAt: null,
+    const executeReset = () => {
+      const duration = getPhaseDuration(cur.phase, settings);
+      const next: TimerState = {
+        ...cur,
+        status: 'idle',
+        remainingMs: duration,
+        durationMs: duration,
+        targetEndTime: null,
+        startedAt: null,
+        sessionStartedAt: null,
+      };
+      setTimerState(next);
+      Store.saveTimer(next);
+      broadcastIfHost(next);
+      if (auth.currentUser && cloudLoadedUserRef.current === auth.currentUser.uid) {
+        pushAllToCloud(auth.currentUser.uid, settingsRef.current, next);
+      }
     };
-    setTimerState(next);
-    Store.saveTimer(next);
-    broadcastIfHost(next);
-    if (auth.currentUser && cloudLoadedUserRef.current === auth.currentUser.uid) {
-      pushAllToCloud(auth.currentUser.uid, settingsRef.current, next);
+
+    if (cur.status !== 'idle' || cur.remainingMs < cur.durationMs) {
+      askConfirm(
+        'Restart Current Segment?',
+        'Are you sure you want to restart this segment? Elapsed focus progress in this session will be reset.',
+        'Restart Timer',
+        executeReset,
+        true
+      );
+    } else {
+      executeReset();
     }
   };
 
@@ -875,6 +1001,7 @@ export const App: React.FC = () => {
       status: 'idle',
       remainingMs: dur,
       durationMs: dur,
+      targetEndTime: null,
       startedAt: null,
       sessionStartedAt: null,
     };
@@ -889,19 +1016,21 @@ export const App: React.FC = () => {
   const handleConfirmResetAllSegments = useCallback(() => {
     const cur = timerRef.current;
     const dur = getPhaseDuration('focus', settingsRef.current);
+    const target = settingsRef.current.timer.cycles || 4;
     const next: TimerState = {
       ...cur,
       status: 'idle',
       phase: 'focus',
       remainingMs: dur,
       durationMs: dur,
-      cycle: 0,
+      cycle: 0, // Reset cycleTally back to 0
+      targetEndTime: null,
       startedAt: null,
       sessionStartedAt: null,
     };
     setTimerState(next);
     Store.saveTimer(next);
-    addToast('All cycle segments reset (0/4).');
+    addToast(`All cycle segments reset (0/${target}).`);
     if (auth.currentUser && cloudLoadedUserRef.current === auth.currentUser.uid) {
       pushAllToCloud(auth.currentUser.uid, settingsRef.current, next);
     }
@@ -934,12 +1063,20 @@ export const App: React.FC = () => {
     }
     let nextPhase: TimerPhase = 'focus';
     let nextCycle = cur.cycle;
+    const targetTally = Math.max(1, tSettings.cycles || 4);
+
     if (tSettings.mode === 'pomodoro') {
       if (cur.phase === 'focus') {
         nextCycle = cur.cycle + 1;
-        nextPhase = nextCycle % tSettings.cycles === 0 ? 'long' : 'short';
-      } else {
+        nextPhase = nextCycle < targetTally ? 'short' : 'long';
+      } else if (cur.phase === 'long') {
+        // When a LONG_BREAK finishes (or is skipped), reset cycleTally back to 0 and transition to FOCUS
         nextPhase = 'focus';
+        nextCycle = 0;
+      } else {
+        // When a SHORT_BREAK finishes (or is skipped), transition back to FOCUS without changing cycleTally
+        nextPhase = 'focus';
+        nextCycle = cur.cycle;
       }
     }
     const duration = getPhaseDuration(nextPhase, settings);
@@ -949,9 +1086,9 @@ export const App: React.FC = () => {
       remainingMs: duration,
       durationMs: duration,
       cycle: nextCycle,
+      targetEndTime: null,
       startedAt: null,
       sessionStartedAt: null,
-      interrupted: false,
     };
     setTimerState(next);
     Store.saveTimer(next);
@@ -971,6 +1108,7 @@ export const App: React.FC = () => {
       phase,
       remainingMs: duration,
       durationMs: duration,
+      targetEndTime: null,
       startedAt: null,
       sessionStartedAt: null,
     };
@@ -986,7 +1124,7 @@ export const App: React.FC = () => {
     }
     let zenTimer: any = null;
     const isEligible = () => {
-      if (tasksOpen || soundsOpen || notesOpen || musicOpen || settingsOpen || roomOpen || confirmModal?.open) {
+      if (tasksOpen || soundsOpen || notesOpen || musicOpen || settingsOpen || roomOpen || studyBotOpen || confirmModal?.open) {
         return false;
       }
       return settings.mode === 'ambient' || timerRef.current.status === 'running';
@@ -1019,6 +1157,7 @@ export const App: React.FC = () => {
     musicOpen,
     settingsOpen,
     roomOpen,
+    studyBotOpen,
     confirmModal,
   ]);
 
@@ -1030,6 +1169,11 @@ export const App: React.FC = () => {
         if (roomOpen) {
           e.preventDefault();
           setRoomOpen(false);
+          return;
+        }
+        if (studyBotOpen) {
+          e.preventDefault();
+          setStudyBotOpen(false);
           return;
         }
         if (settingsOpen) {
@@ -1098,6 +1242,15 @@ export const App: React.FC = () => {
         setSoundsOpen(false);
         setNotesOpen(false);
         setMusicOpen(false);
+        setStudyBotOpen(false);
+      } else if (k === 'b') {
+        setStudyBotOpen(prev => !prev);
+        setTasksOpen(false);
+        setSoundsOpen(false);
+        setNotesOpen(false);
+        setMusicOpen(false);
+        setSettingsOpen(false);
+        setRoomOpen(false);
       }
     };
     window.addEventListener('keydown', handleKey);
@@ -1108,6 +1261,7 @@ export const App: React.FC = () => {
     soundsOpen,
     notesOpen,
     musicOpen,
+    studyBotOpen,
     confirmModal,
     settings,
     zenMode,
@@ -1289,8 +1443,19 @@ export const App: React.FC = () => {
           setNotesOpen(false);
           setMusicOpen(false);
           setSettingsOpen(false);
+          setStudyBotOpen(false);
         }}
         currentRoomCode={currentRoomCode}
+        studyBotOpen={studyBotOpen}
+        onOpenStudyBot={() => {
+          setStudyBotOpen(prev => !prev);
+          setTasksOpen(false);
+          setSoundsOpen(false);
+          setNotesOpen(false);
+          setMusicOpen(false);
+          setSettingsOpen(false);
+          setRoomOpen(false);
+        }}
       />
 
       {/* Tasks Popover */}
@@ -1301,6 +1466,11 @@ export const App: React.FC = () => {
         onUpdateTasks={next => {
           setTasks(next);
           Store.saveTaskItems(next);
+          if (auth.currentUser && cloudLoadedUserRef.current === auth.currentUser.uid) {
+            pushAllToCloud(auth.currentUser.uid, settingsRef.current, timerRef.current, {
+              customTasks: next,
+            });
+          }
         }}
         language={lang}
         onToast={addToast}
@@ -1320,6 +1490,7 @@ export const App: React.FC = () => {
         open={notesOpen}
         onClose={() => setNotesOpen(false)}
         language={lang}
+        onUpdateNotes={handleUpdateNotes}
       />
 
       {/* YouTube Music Stream Popover */}
@@ -1341,6 +1512,11 @@ export const App: React.FC = () => {
         onUpdateTasks={next => {
           setTasks(next);
           Store.saveTaskItems(next);
+          if (auth.currentUser && cloudLoadedUserRef.current === auth.currentUser.uid) {
+            pushAllToCloud(auth.currentUser.uid, settingsRef.current, timerRef.current, {
+              customTasks: next,
+            });
+          }
         }}
         sessions={sessions}
         onUpdateSessions={next => {
@@ -1401,6 +1577,17 @@ export const App: React.FC = () => {
           setCurrentRoomCode(null);
           setRoomOpen(false);
         }}
+      />
+
+      {/* Study Bot Popover (Gemini AI Tutor) */}
+      <StudyBotPopover
+        isOpen={studyBotOpen}
+        onClose={() => setStudyBotOpen(false)}
+        activeTask={activeTask}
+        timerState={timerState}
+        onAppendToNotes={handleUpdateNotes}
+        onToast={addToast}
+        language={lang}
       />
 
       {/* First-time opening Pro Prank Modal */}

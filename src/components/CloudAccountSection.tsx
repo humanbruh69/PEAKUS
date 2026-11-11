@@ -6,10 +6,12 @@ import {
   GoogleAuthProvider,
   signOut,
   onAuthStateChanged,
+  updateProfile,
   User,
 } from 'firebase/auth';
 import { auth } from '../lib/firebase';
 import { Settings, TimerState } from '../types';
+import { pushAllToCloud, clearLocalDeviceWorkspace } from '../lib/cloudSync';
 import { Icon } from './Icons';
 
 interface CloudAccountSectionProps {
@@ -17,23 +19,35 @@ interface CloudAccountSectionProps {
   timerState: TimerState;
   onToast: (msg: string, type?: '' | 'err') => void;
   lang?: string;
+  onUpdateSettingsName?: (name: string) => void;
 }
 
 export const CloudAccountSection: React.FC<CloudAccountSectionProps> = ({
+  settings,
+  timerState,
   onToast,
+  onUpdateSettingsName,
 }) => {
   const [currentUser, setCurrentUser] = useState<User | null>(auth.currentUser);
   const [mode, setMode] = useState<'signin' | 'signup'>('signin');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [displayNameInput, setDisplayNameInput] = useState('');
+  const [editingName, setEditingName] = useState(false);
+  const [savingName, setSavingName] = useState(false);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, user => {
       setCurrentUser(user);
+      if (user?.displayName) {
+        setDisplayNameInput(user.displayName);
+      } else if (settings.name) {
+        setDisplayNameInput(settings.name);
+      }
     });
     return () => unsub();
-  }, []);
+  }, [settings.name]);
 
   const handleAuthSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -95,10 +109,37 @@ export const CloudAccountSection: React.FC<CloudAccountSectionProps> = ({
 
   const handleSignOut = async () => {
     try {
+      clearLocalDeviceWorkspace();
       await signOut(auth);
       onToast('Signed out of Cloud account.');
     } catch {
       onToast('Error signing out.', 'err');
+    }
+  };
+
+  const handleSaveDisplayName = async () => {
+    if (!currentUser) return;
+    const trimmed = displayNameInput.trim();
+    if (!trimmed) {
+      onToast('Please enter a valid display name.', 'err');
+      return;
+    }
+    setSavingName(true);
+    try {
+      await updateProfile(currentUser, { displayName: trimmed });
+      setCurrentUser({ ...currentUser, displayName: trimmed } as User);
+      if (onUpdateSettingsName) {
+        onUpdateSettingsName(trimmed);
+      }
+      await pushAllToCloud(currentUser.uid, { ...settings, name: trimmed }, timerState, {
+        customDisplayName: trimmed,
+      });
+      setEditingName(false);
+      onToast('Display name updated and synced to Cloud.');
+    } catch {
+      onToast('Failed to update display name.', 'err');
+    } finally {
+      setSavingName(false);
     }
   };
 
@@ -154,6 +195,74 @@ export const CloudAccountSection: React.FC<CloudAccountSectionProps> = ({
           >
             Sign Out
           </button>
+        </div>
+
+        {/* Editable User Display Name synced to Cloud */}
+        <div
+          style={{
+            marginTop: '16px',
+            padding: '12px 14px',
+            borderRadius: '10px',
+            background: 'rgba(255, 255, 255, 0.04)',
+            border: '1px solid var(--line)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '8px',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span style={{ fontSize: '12px', fontWeight: 650, color: 'var(--muted)' }}>
+              CLOUD DISPLAY NAME
+            </span>
+            {!editingName && (
+              <button
+                type="button"
+                className="btn link"
+                style={{ fontSize: '12px', padding: 0 }}
+                onClick={() => setEditingName(true)}
+              >
+                Change Name
+              </button>
+            )}
+          </div>
+
+          {editingName ? (
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <input
+                type="text"
+                value={displayNameInput}
+                maxLength={40}
+                placeholder="Enter your name"
+                onChange={e => setDisplayNameInput(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') handleSaveDisplayName();
+                  if (e.key === 'Escape') setEditingName(false);
+                }}
+                style={{ flex: 1, padding: '7px 10px', fontSize: '13px' }}
+              />
+              <button
+                type="button"
+                className="btn primary"
+                disabled={savingName}
+                style={{ fontSize: '12.5px', padding: '7px 14px' }}
+                onClick={handleSaveDisplayName}
+              >
+                {savingName ? 'Saving...' : 'Save'}
+              </button>
+              <button
+                type="button"
+                className="btn ghost"
+                style={{ fontSize: '12.5px', padding: '7px 12px' }}
+                onClick={() => setEditingName(false)}
+              >
+                Cancel
+              </button>
+            </div>
+          ) : (
+            <div style={{ fontSize: '14px', color: '#fff', fontWeight: 600 }}>
+              {currentUser.displayName || '(No display name set)'}
+            </div>
+          )}
         </div>
 
         <div

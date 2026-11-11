@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Icon } from './Icons';
 import { t } from '../lib/i18n';
 import type { LanguageCode } from '../lib/i18n';
-import { APP_LOGO_SRC } from '../lib/branding';
+import { PeakusMountainLogo } from './PeakusMountainLogo';
 
 interface ProPrankModalProps {
   language: LanguageCode;
@@ -77,18 +77,7 @@ export const ProPrankModal: React.FC<ProPrankModalProps> = ({
           <div>
             {/* Peakus App Logo */}
             <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '14px' }}>
-              <img
-                src={APP_LOGO_SRC}
-                alt="Peakus Logo"
-                style={{
-                  width: '56px',
-                  height: '56px',
-                  borderRadius: '16px',
-                  objectFit: 'cover',
-                  border: '1.5px solid rgba(255, 255, 255, 0.25)',
-                  boxShadow: '0 8px 24px rgba(0, 0, 0, 0.5), 0 0 16px rgba(124, 58, 237, 0.3)',
-                }}
-              />
+              <PeakusMountainLogo size={56} />
             </div>
 
             {/* Crown / Sparkle Badge */}

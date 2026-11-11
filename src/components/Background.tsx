@@ -286,8 +286,12 @@ export const Background: React.FC<BackgroundProps> = ({ settings, onUpdateModeBg
     };
   }, [bg.id, bg.kind, animEnabled, cfg.posX, cfg.posY, isVideoOrEmbed]);
 
+  const filterParts: string[] = [];
+  if (cfg.blur) filterParts.push(`blur(${cfg.blur}px)`);
+  if (cfg.keyTone) filterParts.push('contrast(1.18) saturate(0.86) brightness(0.96)');
+
   const wrapStyle: React.CSSProperties = {
-    filter: cfg.blur ? `blur(${cfg.blur}px)` : 'none',
+    filter: filterParts.length ? filterParts.join(' ') : 'none',
     transform: cfg.blur ? `scale(${1 + cfg.blur / 200 + 0.02})` : 'none',
   };
 
@@ -398,6 +402,19 @@ export const Background: React.FC<BackgroundProps> = ({ settings, onUpdateModeBg
       {/* Dim overlay and ambient shade */}
       <div className="bg-dim" style={{ opacity: cfg.dim / 100 }} />
       <div className="bg-shade" />
+
+      {/* Key Tone Cinematic Vignette Overlay */}
+      {cfg.keyTone && (
+        <div
+          className="absolute inset-0 pointer-events-none transition-opacity duration-500"
+          style={{
+            zIndex: 2,
+            background:
+              'radial-gradient(ellipse at 50% 50%, transparent 35%, rgba(0, 0, 0, 0.45) 75%, rgba(0, 0, 0, 0.78) 100%)',
+            mixBlendMode: 'multiply',
+          }}
+        />
+      )}
     </div>
   );
 };

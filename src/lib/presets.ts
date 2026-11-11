@@ -128,6 +128,32 @@ export function saveCustomPreset(preset: PomodoroPreset): PomodoroPreset[] {
   return result;
 }
 
+export function setAllCustomPresets(presets: PomodoroPreset[], notify = true): PomodoroPreset[] {
+  if (!Array.isArray(presets) || presets.length === 0) return getCustomPresets();
+  const sanitized: PomodoroPreset[] = [];
+  for (let i = 0; i < 3; i++) {
+    const fallback = DEFAULT_PRESETS[i];
+    const item = presets[i];
+    if (item) {
+      sanitized.push({
+        id: item.id || fallback.id,
+        name: String(item.name || fallback.name).trim() || fallback.name,
+        focus: Math.max(1, Math.min(240, Number(item.focus) || fallback.focus)),
+        short: Math.max(1, Math.min(60, Number(item.short) || fallback.short)),
+        long: Math.max(1, Math.min(120, Number(item.long) || fallback.long)),
+        cycles: Math.max(1, Math.min(12, Number(item.cycles) || fallback.cycles)),
+      });
+    } else {
+      sanitized.push(fallback);
+    }
+  }
+  safeSet(PRESETS_STORAGE_KEY, JSON.stringify(sanitized));
+  if (notify && typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+    window.dispatchEvent(new CustomEvent('peakus:presets-updated', { detail: sanitized }));
+  }
+  return sanitized;
+}
+
 export function applyPresetToSettings(
   a: Settings | PomodoroPreset,
   b: PomodoroPreset | Settings
@@ -146,3 +172,4 @@ export function applyPresetToSettings(
     },
   };
 }
+

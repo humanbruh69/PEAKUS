@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="100%" height="100%">
+  <defs>
+    <linearGradient id="skyGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#141128" />
+      <stop offset="100%" stop-color="#0a0815" />
+    </linearGradient>
+    <linearGradient id="mainPeakLight" x1="20%" y1="0%" x2="80%" y2="100%">
+      <stop offset="0%" stop-color="#c4b5fd" />
+      <stop offset="45%" stop-color="#818cf8" />
+      <stop offset="100%" stop-color="#4f46e5" />
+    </linearGradient>
+    <linearGradient id="mainPeakShadow" x1="30%" y1="0%" x2="90%" y2="100%">
+      <stop offset="0%" stop-color="#6366f1" />
+      <stop offset="60%" stop-color="#3730a3" />
+      <stop offset="100%" stop-color="#1e1b4b" />
+    </linearGradient>
+    <linearGradient id="subPeakLight" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8" />
+      <stop offset="100%" stop-color="#0284c7" />
+    </linearGradient>
+    <linearGradient id="subPeakShadow" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0369a1" />
+      <stop offset="100%" stop-color="#082f49" />
+    </linearGradient>
+    <radialGradient id="sunGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#f59e0b" stop-opacity="0.9" />
+      <stop offset="40%" stop-color="#f97316" stop-opacity="0.4" />
+      <stop offset="100%" stop-color="#ec4899" stop-opacity="0" />
+    </radialGradient>
+    <filter id="peakGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="3" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+
+  <!-- Dark Rounded Container -->
+  <rect width="120" height="120" rx="28" fill="url(#skyGrad)" stroke="rgba(255, 255, 255, 0.12)" stroke-width="2" />
+
+  <!-- Dawn/Zenith Radial Glow behind peaks -->
+  <circle cx="68" cy="48" r="28" fill="url(#sunGlow)" />
+
+  <!-- Ambient star / spark at summit -->
+  <circle cx="56" cy="22" r="2.5" fill="#fef08a" opacity="0.9" filter="url(#peakGlow)" />
+
+  <!-- Background / Secondary Mountain (Right Peak) -->
+  <!-- Right Peak Shadow Face -->
+  <polygon points="76,46 102,96 76,96" fill="url(#subPeakShadow)" />
+  <!-- Right Peak Lit Face -->
+  <polygon points="76,46 54,96 76,96" fill="url(#subPeakLight)" opacity="0.9" />
+
+  <!-- Foreground / Main Majestic Peak (Center-Left) -->
+  <!-- Left Ridge Lit Face -->
+  <polygon points="46,28 16,96 46,96" fill="url(#mainPeakLight)" />
+  <!-- Right Ridge Shaded Face -->
+  <polygon points="46,28 46,96 82,96" fill="url(#mainPeakShadow)" />
+
+  <!-- Snowcap Highlight Accent Line -->
+  <polyline points="46,28 46,62 38,70 46,78" fill="none" stroke="#ffffff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" opacity="0.85" />
+  <polyline points="46,28 26,72" fill="none" stroke="#ffffff" stroke-width="1.8" stroke-linecap="round" opacity="0.6" />
+
+  <!-- Minimalist Horizon Base Line -->
+  <line x1="12" y1="96" x2="108" y2="96" stroke="rgba(255, 255, 255, 0.18)" stroke-width="2" stroke-linecap="round" />
+</svg>

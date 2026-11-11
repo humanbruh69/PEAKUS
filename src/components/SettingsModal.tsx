@@ -22,7 +22,7 @@ import { saveLink, type SavedLinkItem } from '../lib/savedLinks';
 import { SavedLinksList } from './SavedLinksList';
 import { FocusAnalyticsGraph } from './FocusAnalyticsGraph';
 import { type PomodoroPreset, saveCustomPreset, applyPresetToSettings } from '../lib/presets';
-import { APP_LOGO_SRC } from '../lib/branding';
+import { PeakusMountainLogo } from './PeakusMountainLogo';
 import { CloudAccountSection } from './CloudAccountSection';
 import { computeStats } from '../lib/statsEngine';
 import {
@@ -574,6 +574,20 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             }}
           />
 
+          {/* Key Tone Vignette in Preview */}
+          {currentModeCfg.keyTone && (
+            <div
+              style={{
+                position: 'absolute',
+                inset: 0,
+                background:
+                  'radial-gradient(ellipse at 50% 50%, transparent 35%, rgba(0, 0, 0, 0.45) 75%, rgba(0, 0, 0, 0.78) 100%)',
+                mixBlendMode: 'multiply',
+                pointerEvents: 'none',
+              }}
+            />
+          )}
+
           {/* Live Top-Left Tag */}
           <div
             style={{
@@ -653,10 +667,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 {bgDisplayName}
               </span>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '11px', color: 'rgba(255, 255, 255, 0.75)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '11px', color: 'rgba(255, 255, 255, 0.75)' }}>
               <span>Dim: {currentModeCfg.dim}%</span>
               <span>•</span>
               <span>Blur: {currentModeCfg.blur}px</span>
+              {currentModeCfg.keyTone && (
+                <>
+                  <span>•</span>
+                  <span style={{ color: '#34d399', fontWeight: 700 }}>Key Tone ON</span>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -1515,6 +1535,39 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   ))}
                 </div>
               </div>
+
+              {/* Key Tone Effect Toggle */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '14px', paddingTop: '14px', borderTop: '1px solid rgba(255, 255, 255, 0.08)' }}>
+                <div>
+                  <div style={{ fontWeight: 650, fontSize: '14px', color: '#ffffff', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span>Key Tone Effect</span>
+                    <span
+                      style={{
+                        fontSize: '11px',
+                        padding: '1px 7px',
+                        borderRadius: '10px',
+                        background: 'var(--accent-soft)',
+                        color: 'var(--accent-text)',
+                        border: '1px solid var(--accent-border)',
+                        fontWeight: 600,
+                      }}
+                    >
+                      Cinematic
+                    </span>
+                  </div>
+                  <div style={{ fontSize: '12px', color: 'var(--muted)', marginTop: '2px' }}>
+                    Film-grade midtone contrast, highlight compression, and gentle vignette focus.
+                  </div>
+                </div>
+                <label className="sw" aria-label="Key Tone Effect">
+                  <input
+                    type="checkbox"
+                    checked={!!currentModeCfg.keyTone}
+                    onChange={e => updateSettingField(`modes.@.keyTone`, e.target.checked)}
+                  />
+                  <span className="slider" />
+                </label>
+              </div>
             </div>
 
             {/* Designer Accent Colors */}
@@ -1820,6 +1873,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       ['hand', 'Handwritten'],
       ['minimal-light', 'Light Sans'],
       ['serif-condensed', 'Condensed Serif'],
+      ['outfit', 'Outfit Modern'],
+      ['plus-jakarta', 'Plus Jakarta Sans'],
+      ['dm-sans', 'DM Sans Geometric'],
+      ['fraunces', 'Fraunces Editorial'],
+      ['space-mono', 'Space Mono Code'],
+      ['syne', 'Syne Brutalist'],
     ];
 
     return (
@@ -3225,18 +3284,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '8px' }}>
-            <img
-              src={APP_LOGO_SRC}
-              alt="Peakus Logo"
-              style={{
-                width: '42px',
-                height: '42px',
-                borderRadius: '12px',
-                objectFit: 'cover',
-                border: '1px solid rgba(255, 255, 255, 0.25)',
-                boxShadow: '0 4px 12px rgba(0, 0, 0, 0.4)',
-              }}
-            />
+            <PeakusMountainLogo size={42} />
             <div>
               <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 800 }}>Peakus</h3>
               <p style={{ margin: 0, fontSize: '13px', color: 'var(--accent-text)', fontWeight: 600 }}>
@@ -3412,17 +3460,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </button>
           ))}
           <div className="side-note" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <img
-              src={APP_LOGO_SRC}
-              alt="Peakus Logo"
-              style={{
-                width: '28px',
-                height: '28px',
-                borderRadius: '8px',
-                objectFit: 'cover',
-                border: '1px solid rgba(255, 255, 255, 0.2)',
-              }}
-            />
+            <PeakusMountainLogo size={28} />
             <div>
               <b>Peakus</b> — max your focus
               <br />

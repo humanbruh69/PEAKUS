@@ -1,5 +1,6 @@
 /**
  * Peakus Branding & Logo Assets
- * Inspired by One Piece — symbolising ultimate focus maxxing and clutching exams!
+ * Sleek geometric vector mountain logo symbolising reaching the peak of focus and discipline.
  */
-export const APP_LOGO_SRC = '/src/assets/images/onepiece_focus_logo_1793438190803.jpg';
+export const APP_LOGO_SRC = '/mountain_logo.svg';
+export { PeakusMountainLogo } from '../components/PeakusMountainLogo';

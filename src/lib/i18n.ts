@@ -295,6 +295,11 @@ export interface TranslationDictionary {
   continueFlowYes: string;
   continueFlowNo: string;
   flowAddedToast: string;
+
+  // Study Bot
+  studyBot: string;
+  studyBotDesc: string;
+  studyBotTitle: string;
 }
 
 export const TRANSLATIONS: Record<LanguageCode, TranslationDictionary> = {
@@ -585,6 +590,9 @@ export const TRANSLATIONS: Record<LanguageCode, TranslationDictionary> = {
     continueFlowYes: 'Continue Flow (+10 min)',
     continueFlowNo: 'Start Break',
     flowAddedToast: 'Added 10 minutes to your flow state 🌊',
+    studyBot: 'Study Bot',
+    studyBotDesc: 'Instant answers without juggling tabs',
+    studyBotTitle: 'Peakus Study Bot',
   },
 
   ta: {
@@ -874,6 +882,9 @@ export const TRANSLATIONS: Record<LanguageCode, TranslationDictionary> = {
     continueFlowYes: 'ஓட்டத்தைத் தொடர் (+10 நிமிடம்)',
     continueFlowNo: 'இடைவேளை தொடங்கு',
     flowAddedToast: 'உங்கள் கவன ஓட்டத்தில் 10 நிமிடங்கள் சேர்க்கப்பட்டது 🌊',
+    studyBot: 'படிப்பு போட்',
+    studyBotDesc: 'தாவல்களை மாற்றாமல் உடனடி பதில்கள்',
+    studyBotTitle: 'பீக்கஸ் படிப்பு போட்',
   },
 
   es: {
@@ -1163,6 +1174,9 @@ export const TRANSLATIONS: Record<LanguageCode, TranslationDictionary> = {
     continueFlowYes: 'Continuar Flujo (+10 min)',
     continueFlowNo: 'Iniciar Descanso',
     flowAddedToast: 'Sumamos 10 minutos a tu estado de flujo 🌊',
+    studyBot: 'Bot de Estudio',
+    studyBotDesc: 'Respuestas instantáneas sin cambiar de pestañas',
+    studyBotTitle: 'Bot de Estudio Peakus',
   },
 };
 

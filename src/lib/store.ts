@@ -9,6 +9,7 @@ export const Store = (() => {
     history: 'foco.history.v1',
     timer: 'foco.timer.v1',
     notes: 'foco.notes.v1',
+    focusStats: 'peakus.focus_stats.v1',
   };
 
   const mem = new Map<string, string>();
@@ -84,6 +85,7 @@ export const Store = (() => {
       mm.blur = U.clamp(+mm.blur || 0, 0, 30);
       mm.posX = U.clamp(+mm.posX, 0, 100);
       mm.posY = U.clamp(+mm.posY, 0, 100);
+      mm.keyTone = !!(raw?.modes?.[m]?.keyTone);
       if (Number.isNaN(mm.posX)) mm.posX = 50;
       if (Number.isNaN(mm.posY)) mm.posY = 50;
     }
@@ -106,7 +108,7 @@ export const Store = (() => {
 
     const c = s.clock;
     if (!['12', '24'].includes(c.format)) c.format = '12';
-    if (!['bold', 'thin', 'minimal', 'serif', 'hand', 'minimal-light', 'serif-condensed'].includes(c.style)) c.style = 'bold';
+    if (!['bold', 'thin', 'minimal', 'serif', 'hand', 'minimal-light', 'serif-condensed', 'outfit', 'plus-jakarta', 'dm-sans', 'fraunces', 'space-mono', 'syne'].includes(c.style)) c.style = 'bold';
     c.size = intIn(c.size, 50, 170, 100);
     if (!U.isHex(c.color)) c.color = '#ffffff';
 
@@ -265,6 +267,8 @@ export const Store = (() => {
     },
     loadNotes: () => Store.loadNotesDoc().text,
     saveNotes: (n: string, at = Date.now()) => write(K.notes, { text: String(n).slice(0, 20000), at }),
+    loadFocusStats: (): Record<string, any> => read<Record<string, any>>(K.focusStats, {}),
+    saveFocusStats: (stats: Record<string, any>) => write(K.focusStats, stats),
     normSettings,
     normTasks,
     normHistory,

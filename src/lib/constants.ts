@@ -7,9 +7,9 @@ export const DEFAULTS: Settings = {
   language: 'en',
   mode: 'focus',
   modes: {
-    home: { bg: { kind: 'scene', id: 'bosque' }, dim: 28, blur: 0, posX: 50, posY: 50 },
-    focus: { bg: { kind: 'scene', id: 'cafe' }, dim: 30, blur: 0, posX: 50, posY: 50 },
-    ambient: { bg: { kind: 'scene', id: 'ventana' }, dim: 8, blur: 0, posX: 50, posY: 50 },
+    home: { bg: { kind: 'scene', id: 'bosque' }, dim: 28, blur: 0, posX: 50, posY: 50, keyTone: false },
+    focus: { bg: { kind: 'scene', id: 'cafe' }, dim: 30, blur: 0, posX: 50, posY: 50, keyTone: false },
+    ambient: { bg: { kind: 'scene', id: 'ventana' }, dim: 8, blur: 0, posX: 50, posY: 50, keyTone: false },
   },
   clock: {
     format: '12',
@@ -253,6 +253,7 @@ export const ICON_PATHS: Record<string, string> = {
   flow: '<path d="M3 10c3-3.5 6-3.5 9 0s6 3.5 9 0M3 14c3-3.5 6-3.5 9 0s6 3.5 9 0"/>',
   dotsReset: '<circle cx="6" cy="12" r="2.2"/><circle cx="12" cy="12" r="2.2"/><circle cx="18" cy="12" r="2.2"/><path d="M12 4v4m0 8v4" stroke-linecap="round"/>',
   users: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
+  bot: '<rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="2"/><path d="M12 7v4M8 16h.01M16 16h.01M9 19h6"/>',
   messageSquare: '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
   copy: '<rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>',
   send: '<path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/>',
