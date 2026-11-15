@@ -1,11 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Icon, FlameIcon } from './Icons';
 import type { Settings, ModeKey, TimerPhase, Task, TimerStatus } from '../types';
 import { fmtClock, dayKey, hashStr } from '../lib/utils';
-import { t, MULTILINGUAL_QUOTES } from '../lib/i18n';
+import { t } from '../lib/i18n';
+import { selectStageQuote } from '../lib/toxicQuotes';
 import { AmbientTimer } from './AmbientTimer';
 import type { PomodoroPreset } from '../lib/presets';
-import { PeakusMountainLogo } from './PeakusMountainLogo';
 import { resolveTallyEmojis } from '../lib/tallyThemes';
 
 interface StageProps {
@@ -29,12 +29,17 @@ interface StageProps {
   onOpenNotes: () => void;
   onOpenMusic: () => void;
   onOpenSettings: () => void;
+  onOpenThemes?: () => void;
   tasksOpen: boolean;
   soundsOpen: boolean;
   notesOpen: boolean;
   musicOpen: boolean;
   settingsOpen: boolean;
   streakCount: number;
+  streakGoalMet?: boolean;
+  todayFocusMs?: number;
+  todayGoalMs?: number;
+  onOpenStats?: () => void;
   zenMode: boolean;
   onToggleZen: () => void;
   presets?: PomodoroPreset[];
@@ -42,8 +47,6 @@ interface StageProps {
   flowMode?: boolean;
   onToggleFlowMode?: () => void;
   onResetSegments?: () => void;
-  roomOpen?: boolean;
-  onOpenRoom?: () => void;
   currentRoomCode?: string | null;
   studyBotOpen?: boolean;
   onOpenStudyBot?: () => void;
@@ -64,22 +67,20 @@ export const Stage: React.FC<StageProps> = ({
   onOpenNotes,
   onOpenMusic,
   onOpenSettings,
+  onOpenThemes,
   tasksOpen,
   soundsOpen,
   notesOpen,
   musicOpen,
   settingsOpen,
   streakCount,
+  streakGoalMet = false,
+  todayFocusMs = 0,
+  todayGoalMs = 25 * 60000,
+  onOpenStats,
   zenMode,
   onToggleZen,
-  presets = [],
-  onSelectPreset,
-  flowMode = false,
-  onToggleFlowMode,
   onResetSegments,
-  roomOpen = false,
-  onOpenRoom,
-  currentRoomCode = null,
   studyBotOpen = false,
   onOpenStudyBot,
 }) => {
@@ -87,6 +88,8 @@ export const Stage: React.FC<StageProps> = ({
   const [isEditingLabel, setIsEditingLabel] = useState(false);
   const [customLabel, setCustomLabel] = useState('');
   const [isFs, setIsFs] = useState(false);
+  const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
+  const moreRef = useRef<HTMLDivElement>(null);
 
   const lang = settings.language || 'en';
 
@@ -110,6 +113,18 @@ export const Stage: React.FC<StageProps> = ({
       document.removeEventListener('webkitfullscreenchange', updateFs);
     };
   }, []);
+
+  // Close mobile "more" drawer on outside tap
+  useEffect(() => {
+    if (!mobileMoreOpen) return;
+    const handleOutside = (e: PointerEvent) => {
+      if (moreRef.current && !moreRef.current.contains(e.target as Node)) {
+        setMobileMoreOpen(false);
+      }
+    };
+    window.addEventListener('pointerdown', handleOutside);
+    return () => window.removeEventListener('pointerdown', handleOutside);
+  }, [mobileMoreOpen]);
 
   const mode = settings.mode;
   const pomo = settings.timer.mode === 'pomodoro';
@@ -183,7 +198,6 @@ export const Stage: React.FC<StageProps> = ({
       return opts[hashStr(dayKey(d.getTime()) + ':' + Math.floor(h / 3)) % opts.length];
     }
 
-    // Default English
     const base =
       h < 5
         ? `Good night${n}`
@@ -217,20 +231,10 @@ export const Stage: React.FC<StageProps> = ({
     return s.charAt(0).toUpperCase() + s.slice(1);
   };
 
-  // Quote based on selected language
-  const getQuote = () => {
-    const q = settings.quotes;
-    if (q.useCustom && q.custom.trim()) return q.custom.trim();
-    const quoteList = MULTILINGUAL_QUOTES[lang] || MULTILINGUAL_QUOTES.en;
-    const d = now;
-    let i: number;
-    if (q.rotation === 'hourly') {
-      i = hashStr(dayKey(d.getTime()) + d.getHours()) % quoteList.length;
-    } else {
-      i = hashStr(dayKey(d.getTime())) % quoteList.length;
-    }
-    return quoteList[i];
-  };
+  const [visitSeed] = useState(() => Math.floor(Math.random() * 10000));
+
+  // Quote based on selected language and Toxic Motivation toggle
+  const getQuote = () => selectStageQuote(settings.quotes, lang, now, visitSeed);
 
   // Activity Label
   const getActivityLabel = () => {
@@ -299,39 +303,75 @@ export const Stage: React.FC<StageProps> = ({
     );
   };
 
+  const primaryCtaLabel =
+    timerState.status === 'running'
+      ? t('pause', lang)
+      : timerState.status === 'paused'
+      ? t('resume', lang)
+      : t('start', lang);
+
+  const showSkipBtn =
+    timerState.status === 'running' ||
+    timerState.status === 'paused' ||
+    timerState.phase !== 'focus';
+
+  const todayMins = Math.round(todayFocusMs / 60000);
+  const goalMins = Math.max(1, Math.round(todayGoalMs / 60000));
+  const showClockStreakIndicator =
+    streakGoalMet && settings.timer.showStreak && !zenMode;
+  const animDisabled = settings.appearance.animation === 'off';
+
+  const renderClockStreakIndicator = () => {
+    if (!showClockStreakIndicator) return null;
+    const goalMetLabel =
+      lang === 'es'
+        ? 'Meta lograda'
+        : lang === 'ta'
+        ? 'இலக்கு நிறைவு'
+        : 'Goal met';
+    const dayWord =
+      streakCount === 1 ? t('streakDaySingle', lang) : t('streakDays', lang);
+    const fullAria = `${t('streak', lang)}: ${streakCount} ${dayWord} — ${goalMetLabel} (${todayMins}m / ${goalMins}m)`;
+    return (
+      <button
+        type="button"
+        id="clockStreakBadge"
+        className={`clock-streak-badge has-tip ${animDisabled ? 'no-anim' : ''}`}
+        onClick={onOpenStats || onOpenSettings}
+        aria-label={fullAria}
+      >
+        <span className="csb-halo" aria-hidden="true" />
+        <span className="csb-flame" aria-hidden="true">
+          <FlameIcon />
+        </span>
+        <span className="csb-meta">
+          <span className="csb-count">{streakCount}</span>
+          <span className="csb-tag">{goalMetLabel}</span>
+        </span>
+        <span className="tip">
+          {goalMetLabel} ({todayMins}m / {goalMins}m)
+        </span>
+      </button>
+    );
+  };
+
   return (
     <main className="stage" id="stage">
-      {/* Top Left Logo & Tagline */}
+      {/* Top Left Brand Wordmark — typographic PEAKUS.COM only */}
       {settings.appearance.showLogo && !zenMode && (
-        <div
-          className="logo fadeable"
-          id="logo"
-          aria-hidden="true"
-          style={{ display: 'flex', alignItems: 'center', gap: '12px' }}
-        >
-          <PeakusMountainLogo size={42} />
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
-            <span style={{ fontWeight: 800, letterSpacing: '-0.04em' }}>Peakus</span>
-            <span
-              style={{
-                fontSize: '11px',
-                fontWeight: 600,
-                letterSpacing: '0.04em',
-                textTransform: 'uppercase',
-                color: 'rgba(255, 255, 255, 0.72)',
-                textShadow: '0 1px 4px rgba(0,0,0,0.5)',
-                marginTop: '-2px',
-              }}
-            >
-              {t('tagline', lang)}
-            </span>
-          </div>
+        <div className="logo fadeable" id="logo" aria-hidden="true">
+          <span className="logo-wordmark">
+            PEAKUS<span className="logo-tld">.COM</span>
+          </span>
         </div>
       )}
 
       {/* Top Right Quote */}
       {settings.quotes.show && mode !== 'ambient' && !zenMode && (
-        <p className="quote fadeable" id="quote">
+        <p
+          className={`quote fadeable ${settings.quotes.toxicMotivation ? 'toxic' : ''}`.trim()}
+          id="quote"
+        >
           “{getQuote()}”
         </p>
       )}
@@ -382,6 +422,7 @@ export const Stage: React.FC<StageProps> = ({
                   <span className="ampm">{tp.ampm}</span>
                 )}
               </div>
+              {renderClockStreakIndicator()}
             </div>
             {settings.clock.date && (
               <div className="date-line" id="dateLine">
@@ -393,36 +434,6 @@ export const Stage: React.FC<StageProps> = ({
 
         {mode === 'focus' && (
           <>
-
-            {/* Phase Switch (Pomodoro) */}
-            {pomo && timerState.status !== 'running' && !zenMode && (
-              <div
-                className="phase-switch fadeable"
-                id="phaseSwitch"
-                role="group"
-                aria-label="Timer phase"
-              >
-                <button
-                  aria-pressed={timerState.phase === 'focus'}
-                  onClick={() => onSetPhase('focus')}
-                >
-                  {t('phaseFocus', lang)}
-                </button>
-                <button
-                  aria-pressed={timerState.phase === 'short'}
-                  onClick={() => onSetPhase('short')}
-                >
-                  {t('phaseShort', lang)}
-                </button>
-                <button
-                  aria-pressed={timerState.phase === 'long'}
-                  onClick={() => onSetPhase('long')}
-                >
-                  {t('phaseLong', lang)}
-                </button>
-              </div>
-            )}
-
             {/* Activity Label */}
             {!zenMode && (
               <div id="labelWrap">
@@ -455,7 +466,39 @@ export const Stage: React.FC<StageProps> = ({
               </div>
             )}
 
-            {/* Session Tallies (Emojis / Dots / Numbers) */}
+            {/* Phase Switch (Pomodoro) — kept stable in layout to prevent vertical jumps */}
+            {pomo && !zenMode && (
+              <div
+                className={`phase-switch fadeable ${timerState.status === 'running' ? 'is-running' : ''}`}
+                id="phaseSwitch"
+                role="group"
+                aria-label="Timer phase"
+              >
+                <button
+                  type="button"
+                  aria-pressed={timerState.phase === 'focus'}
+                  onClick={() => onSetPhase('focus')}
+                >
+                  {t('phaseFocus', lang)}
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={timerState.phase === 'short'}
+                  onClick={() => onSetPhase('short')}
+                >
+                  {t('phaseShort', lang)}
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={timerState.phase === 'long'}
+                  onClick={() => onSetPhase('long')}
+                >
+                  {t('phaseLong', lang)}
+                </button>
+              </div>
+            )}
+
+            {/* Session Tallies (Clean unboxed emojis / dots / numbers) */}
             {pomo && settings.timer.tallies !== 'none' && !zenMode && (() => {
               const totalCycles = Math.max(1, settings.timer.cycles || 4);
               const completedInCycle = Math.min(totalCycles, Math.max(0, timerState.cycle));
@@ -465,15 +508,11 @@ export const Stage: React.FC<StageProps> = ({
                 : [];
 
               return (
-                <div
+                <button
+                  type="button"
                   className={`tallies fadeable ${isEmoji ? 'tallies-emoji' : ''}`}
                   id="tallies"
-                  role="button"
-                  tabIndex={0}
-                  onClick={onResetSegments}
-                  onKeyDown={e => {
-                    if (e.key === 'Enter' || e.key === ' ') onResetSegments?.();
-                  }}
+                  onClick={onResetSegments || onResetTimer}
                   title={
                     lang === 'es'
                       ? `Segmentos: ${completedInCycle}/${totalCycles}. Clic para reiniciar.`
@@ -481,10 +520,9 @@ export const Stage: React.FC<StageProps> = ({
                       ? `சுற்றுகள்: ${completedInCycle}/${totalCycles}. மீட்டமைக்க கிளிக் செய்யவும்.`
                       : `Segments: ${completedInCycle}/${totalCycles}. Click to reset.`
                   }
-                  style={{ cursor: 'pointer' }}
                 >
                   {isEmoji ? (
-                    <div className="tally-emoji-row">
+                    <span className="tally-emoji-row">
                       {emojis.map((emoji, i) => {
                         const isDone = i < completedInCycle;
                         const isCurrent = i === completedInCycle && timerState.status === 'running';
@@ -492,14 +530,12 @@ export const Stage: React.FC<StageProps> = ({
                           <span
                             key={i}
                             className={`tally-emoji-item ${isDone ? 'done' : isCurrent ? 'current' : 'pending'}`}
-                            title={`Session ${i + 1} of ${totalCycles}`}
                           >
                             <span className="tally-emoji-glyph">{emoji}</span>
-                            <span className="tally-emoji-dot" />
                           </span>
                         );
                       })}
-                    </div>
+                    </span>
                   ) : settings.timer.tallies === 'dots' ? (
                     Array.from({ length: totalCycles }, (_, i) => (
                       <i
@@ -512,7 +548,7 @@ export const Stage: React.FC<StageProps> = ({
                       {completedInCycle}/{totalCycles}
                     </span>
                   )}
-                </div>
+                </button>
               );
             })()}
 
@@ -550,14 +586,7 @@ export const Stage: React.FC<StageProps> = ({
               {settings.timer.style === 'gauge' && (
                 <div className="timer-visual">
                   <svg className="tv-ring" viewBox="0 0 100 100">
-                    <circle
-                      className="trk"
-                      cx="50"
-                      cy="50"
-                      r="42"
-                      fill="none"
-                      strokeWidth="8"
-                    />
+                    <circle className="trk" cx="50" cy="50" r="42" fill="none" strokeWidth="8" />
                     <circle
                       className="val"
                       cx="50"
@@ -599,7 +628,7 @@ export const Stage: React.FC<StageProps> = ({
                       cy="50"
                       r="23"
                       fill="none"
-                      stroke="#fff"
+                      stroke="var(--accent)"
                       strokeWidth="46"
                       strokeDasharray={145}
                       strokeDashoffset={145 * (1 - progressRatio)}
@@ -620,31 +649,22 @@ export const Stage: React.FC<StageProps> = ({
               </div>
             )}
 
-            {/* Controls */}
+            {/* Minimal Controls Row matching fwocus: [ Start / Pause ] + [ Reset ] (+ [ Skip ] when active) */}
             <div className="controls fadeable" id="controls">
               <button
-                className="ctl primary"
+                type="button"
+                className={`ctl-pill ${timerState.status === 'running' ? 'running' : ''}`}
                 id="btnToggle"
-                aria-label={
-                  timerState.status === 'running'
-                    ? t('pause', lang)
-                    : timerState.status === 'paused'
-                    ? t('resume', lang)
-                    : t('start', lang)
-                }
-                title={
-                  (timerState.status === 'running'
-                    ? t('pause', lang)
-                    : timerState.status === 'paused'
-                    ? t('resume', lang)
-                    : t('start', lang)) + ' (Space)'
-                }
+                aria-label={primaryCtaLabel}
+                title={`${primaryCtaLabel} (Space)`}
                 onClick={onToggleTimer}
               >
-                <Icon name={timerState.status === 'running' ? 'pause' : 'play'} />
+                <span>{primaryCtaLabel}</span>
               </button>
+
               <button
-                className="ctl"
+                type="button"
+                className="ctl-icon"
                 id="btnReset"
                 aria-label={t('reset', lang)}
                 title={`${t('reset', lang)} (R)`}
@@ -652,30 +672,23 @@ export const Stage: React.FC<StageProps> = ({
               >
                 <Icon name="reset" />
               </button>
-              <button
-                className="ctl"
-                id="btnSkip"
-                aria-label={t('skip', lang)}
-                title={
-                  timerState.phase === 'focus'
-                    ? pomo
-                      ? t('skipToBreak', lang)
-                      : t('finish', lang)
-                    : t('skipToFocus', lang)
-                }
-                onClick={onSkipTimer}
-              >
-                <Icon name="skip" />
-              </button>
-              {pomo && (
+
+              {showSkipBtn && (
                 <button
-                  className="ctl"
-                  id="btnResetSegments"
-                  aria-label={lang === 'es' ? 'Restablecer segmentos' : lang === 'ta' ? 'சுற்று மீட்டமை' : 'Reset segments'}
-                  title={`${lang === 'es' ? 'Restablecer segmentos' : lang === 'ta' ? 'சுற்று மீட்டமை' : 'Reset segments'} (0/${settings.timer.cycles})`}
-                  onClick={onResetSegments}
+                  type="button"
+                  className="ctl-icon"
+                  id="btnSkip"
+                  aria-label={t('skip', lang)}
+                  title={
+                    timerState.phase === 'focus'
+                      ? pomo
+                        ? t('skipToBreak', lang)
+                        : t('finish', lang)
+                      : t('skipToFocus', lang)
+                  }
+                  onClick={onSkipTimer}
                 >
-                  <Icon name="dotsReset" />
+                  <Icon name="skip" />
                 </button>
               )}
             </div>
@@ -683,267 +696,261 @@ export const Stage: React.FC<StageProps> = ({
         )}
       </section>
 
-
-      {/* Corner Left Navigation (Hidden in Zen Mode) */}
+      {/* Corner Left Navigation — clean circular frosted glass icons */}
       {!zenMode && (
         <nav className="corner left fadeable" aria-label="Tools">
           <button
-            className={`ib has-tip ${tasksOpen ? 'active' : ''}`}
-            id="btnTasks"
-            aria-label={t('tasks', lang)}
-            aria-expanded={tasksOpen}
-            onClick={onOpenTasks}
-          >
-            <Icon name="tasks" />
-            <span className="tip">{t('tasks', lang)} (T)</span>
-          </button>
-
-          <button
+            type="button"
             className={`ib has-tip ${soundsOpen ? 'active' : ''}`}
             id="btnSounds"
             aria-label={t('sounds', lang)}
             aria-expanded={soundsOpen}
-            onClick={onOpenSounds}
+            onClick={() => {
+              setMobileMoreOpen(false);
+              onOpenSounds();
+            }}
           >
             <Icon name="music" />
             <span className="tip">{t('sounds', lang)} (M)</span>
           </button>
 
           <button
+            type="button"
             className={`ib has-tip ${notesOpen ? 'active' : ''}`}
             id="btnNotes"
             aria-label={t('notes', lang)}
             aria-expanded={notesOpen}
-            onClick={onOpenNotes}
+            onClick={() => {
+              setMobileMoreOpen(false);
+              onOpenNotes();
+            }}
           >
             <Icon name="pencil" />
             <span className="tip">{t('notes', lang)}</span>
           </button>
 
-          {/* YouTube Music Stream Player Button */}
           <button
-            className={`ib has-tip ${musicOpen ? 'active' : ''} ${settings.music?.playing ? 'playing' : ''}`}
+            type="button"
+            className={`ib has-tip ${tasksOpen ? 'active' : ''}`}
+            id="btnTasks"
+            aria-label={t('tasks', lang)}
+            aria-expanded={tasksOpen}
+            onClick={() => {
+              setMobileMoreOpen(false);
+              onOpenTasks();
+            }}
+          >
+            <Icon name="tasks" />
+            <span className="tip">{t('tasks', lang)} (T)</span>
+          </button>
+
+          {/* Desktop/Tablet direct icons (hidden into More menu on narrow portrait mobile) */}
+          <button
+            type="button"
+            className={`ib has-tip desktop-tool ${musicOpen ? 'active' : ''} ${settings.music?.playing ? 'playing' : ''}`}
             id="btnMusic"
             aria-label={t('music', lang)}
             aria-expanded={musicOpen}
             onClick={onOpenMusic}
           >
             <Icon name="headphones" />
-            {settings.music?.playing && (
-              <span
-                style={{
-                  position: 'absolute',
-                  top: '7px',
-                  right: '7px',
-                  width: '7px',
-                  height: '7px',
-                  borderRadius: '50%',
-                  backgroundColor: '#34d399',
-                  boxShadow: '0 0 6px #34d399',
-                }}
-              />
-            )}
             <span className="tip">{t('music', lang)}</span>
           </button>
 
-          {/* Study with Friends / Room Button (ALPHA) */}
           <button
-            className={`ib has-tip ${roomOpen ? 'active' : ''}`}
-            id="btnStudyRoom"
-            aria-label="[ALPHA] Focus with Friends"
-            aria-expanded={roomOpen}
-            onClick={onOpenRoom}
-            style={{
-              position: 'relative',
-              ...(currentRoomCode
-                ? {
-                    borderColor: 'var(--accent)',
-                    backgroundColor: 'var(--accent-soft)',
-                    color: 'var(--accent-text)',
-                  }
-                : {}),
-            }}
-          >
-            <Icon name="users" />
-            <span
-              style={{
-                position: 'absolute',
-                top: '-4px',
-                right: '-3px',
-                fontSize: '8px',
-                fontWeight: 800,
-                padding: '1px 3px',
-                borderRadius: '4px',
-                backgroundColor: '#f59e0b',
-                color: '#000000',
-                letterSpacing: '0.04em',
-                lineHeight: 1,
-                boxShadow: '0 1px 4px rgba(0,0,0,0.4)',
-              }}
-            >
-              ALPHA
-            </span>
-            {currentRoomCode && (
-              <span
-                style={{
-                  position: 'absolute',
-                  bottom: '5px',
-                  right: '5px',
-                  width: '6px',
-                  height: '6px',
-                  borderRadius: '50%',
-                  backgroundColor: '#10b981',
-                  boxShadow: '0 0 6px #10b981',
-                }}
-              />
-            )}
-            <span className="tip">
-              {currentRoomCode
-                ? `[ALPHA] Room: ${currentRoomCode}`
-                : '[ALPHA] Focus with Friends (Experimental)'}
-            </span>
-          </button>
-
-          {/* Study Bot (Gemini AI Tutor) */}
-          <button
-            className={`ib has-tip ${studyBotOpen ? 'active' : ''}`}
+            type="button"
+            className={`ib has-tip desktop-tool ${studyBotOpen ? 'active' : ''}`}
             id="btnStudyBot"
             aria-label={t('studyBot', lang)}
             aria-expanded={studyBotOpen}
             onClick={onOpenStudyBot}
-            style={{
-              position: 'relative',
-              ...(studyBotOpen
-                ? {
-                    borderColor: 'var(--accent)',
-                    backgroundColor: 'var(--accent-soft)',
-                    color: 'var(--accent-text)',
-                  }
-                : {}),
-            }}
           >
             <Icon name="bot" />
-            <span
-              style={{
-                position: 'absolute',
-                top: '-4px',
-                right: '-3px',
-                fontSize: '8px',
-                fontWeight: 800,
-                padding: '1px 3px',
-                borderRadius: '4px',
-                backgroundColor: 'var(--accent)',
-                color: '#000000',
-                letterSpacing: '0.04em',
-                lineHeight: 1,
-                boxShadow: '0 1px 4px rgba(0,0,0,0.4)',
-              }}
-            >
-              AI
-            </span>
             <span className="tip">{t('studyBot', lang)} (B)</span>
           </button>
+
+          {/* Compact More menu on narrow portrait mobile */}
+          <div className="mobile-more-wrap" ref={moreRef}>
+            <button
+              type="button"
+              className={`ib ${mobileMoreOpen ? 'active' : ''}`}
+              id="btnMoreTools"
+              aria-label="More study tools"
+              aria-expanded={mobileMoreOpen}
+              onClick={() => setMobileMoreOpen(prev => !prev)}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <circle cx="5" cy="12" r="2" />
+                <circle cx="12" cy="12" r="2" />
+                <circle cx="19" cy="12" r="2" />
+              </svg>
+            </button>
+
+            {mobileMoreOpen && (
+              <div className="mobile-more-menu" role="menu">
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setMobileMoreOpen(false);
+                    onOpenStudyBot?.();
+                  }}
+                >
+                  <Icon name="bot" />
+                  <span>{t('studyBot', lang)}</span>
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setMobileMoreOpen(false);
+                    onOpenMusic();
+                  }}
+                >
+                  <Icon name="headphones" />
+                  <span>{t('music', lang)}</span>
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setMobileMoreOpen(false);
+                    onToggleZen();
+                  }}
+                >
+                  <Icon name="zen" />
+                  <span>{t('zenMode', lang)}</span>
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setMobileMoreOpen(false);
+                    toggleFullscreen();
+                  }}
+                >
+                  <Icon name={isFs ? 'compress' : 'expand'} />
+                  <span>{isFs ? t('exitFullscreen', lang) : t('fullscreen', lang)}</span>
+                </button>
+              </div>
+            )}
+          </div>
         </nav>
       )}
 
-      {/* Corner Right Navigation (Hidden in Zen Mode) */}
+      {/* Corner Right Navigation */}
       {!zenMode && (
         <nav className="corner right fadeable" aria-label="Modes and settings">
           {settings.timer.showStreak && (
-            <button className="streak has-tip" id="streak">
+            <button
+              type="button"
+              className={`streak has-tip ${streakGoalMet ? 'goal-met' : ''} ${animDisabled ? 'no-anim' : ''}`}
+              id="streak"
+              onClick={onOpenStats || onOpenSettings}
+              aria-label={`${t('streak', lang)}: ${streakCount}`}
+            >
               <span id="streakIc">
                 <FlameIcon />
               </span>
               <span id="streakN">{streakCount}</span>
               <span className="tip">
                 {t('streak', lang)}: {streakCount}{' '}
-                {streakCount === 1 ? t('streakDaySingle', lang) : t('streakDays', lang)} (
-                {t('streakGoalNote', lang)} {settings.timer.streakGoal} min/
-                {t('streakDaySingle', lang)})
+                {streakCount === 1 ? t('streakDaySingle', lang) : t('streakDays', lang)}
+                {streakGoalMet ? ` · ${todayMins}m / ${goalMins}m ✓` : ''}
               </span>
             </button>
           )}
 
-          <div className="modes" role="group" aria-label="Mode">
+          <div className="right-controls-row">
+            <div className="modes" role="group" aria-label="Mode">
+              <button
+                type="button"
+                className="has-tip"
+                data-mode="home"
+                aria-label={t('modeHome', lang)}
+                aria-pressed={mode === 'home'}
+                onClick={() => onUpdateSettings({ ...settings, mode: 'home' as ModeKey }, 'mode')}
+              >
+                <Icon name="home" />
+                <span className="tip">{t('modeHome', lang)} (1)</span>
+              </button>
+
+              <button
+                type="button"
+                className="has-tip"
+                data-mode="focus"
+                aria-label={t('modeFocus', lang)}
+                aria-pressed={mode === 'focus'}
+                onClick={() => onUpdateSettings({ ...settings, mode: 'focus' as ModeKey }, 'mode')}
+              >
+                <Icon name="clock" />
+                <span className="tip">{t('modeFocus', lang)} (2)</span>
+              </button>
+
+              <button
+                type="button"
+                className="has-tip"
+                data-mode="ambient"
+                aria-label={t('modeAmbient', lang)}
+                aria-pressed={mode === 'ambient'}
+                onClick={() => onUpdateSettings({ ...settings, mode: 'ambient' as ModeKey }, 'mode')}
+              >
+                <Icon name="cloud" />
+                <span className="tip">{t('modeAmbient', lang)} (3)</span>
+              </button>
+            </div>
+
             <button
-              className="has-tip"
-              data-mode="ambient"
-              aria-label={t('modeAmbient', lang)}
-              aria-pressed={mode === 'ambient'}
-              onClick={() => {
-                const next = { ...settings, mode: 'ambient' as ModeKey };
-                onUpdateSettings(next, 'mode');
-              }}
+              type="button"
+              className="ib has-tip"
+              id="btnThemes"
+              aria-label={t('tabThemes', lang)}
+              onClick={onOpenThemes || onOpenSettings}
             >
-              <Icon name="cloud" />
-              <span className="tip">{t('modeAmbient', lang)} (3)</span>
+              <Icon name="palette" />
+              <span className="tip">{t('tabThemes', lang)}</span>
             </button>
 
             <button
-              className="has-tip"
-              data-mode="home"
-              aria-label={t('modeHome', lang)}
-              aria-pressed={mode === 'home'}
-              onClick={() => {
-                const next = { ...settings, mode: 'home' as ModeKey };
-                onUpdateSettings(next, 'mode');
-              }}
+              type="button"
+              className="ib has-tip desktop-tool"
+              id="btnZen"
+              aria-label={t('zenMode', lang)}
+              onClick={onToggleZen}
             >
-              <Icon name="home" />
-              <span className="tip">{t('modeHome', lang)} (1)</span>
+              <Icon name="zen" />
+              <span className="tip">{t('zenMode', lang)} (Z)</span>
             </button>
 
             <button
-              className="has-tip"
-              data-mode="focus"
-              aria-label={t('modeFocus', lang)}
-              aria-pressed={mode === 'focus'}
-              onClick={() => {
-                const next = { ...settings, mode: 'focus' as ModeKey };
-                onUpdateSettings(next, 'mode');
-              }}
+              type="button"
+              className={`ib has-tip ${settingsOpen ? 'active' : ''}`}
+              id="btnSettings"
+              aria-label={t('settings', lang)}
+              aria-expanded={settingsOpen}
+              onClick={onOpenSettings}
             >
-              <Icon name="bulb" />
-              <span className="tip">{t('modeFocus', lang)} (2)</span>
+              <Icon name="gear" />
+              <span className="tip">{t('settings', lang)} (,)</span>
+            </button>
+
+            <button
+              type="button"
+              className="ib has-tip desktop-tool"
+              id="btnFs"
+              aria-label={isFs ? t('exitFullscreen', lang) : t('fullscreen', lang)}
+              onClick={toggleFullscreen}
+            >
+              <Icon name={isFs ? 'compress' : 'expand'} />
+              <span className="tip">
+                {isFs ? t('exitFullscreen', lang) : t('fullscreen', lang)} (F)
+              </span>
             </button>
           </div>
-
-          <button
-            className="ib has-tip"
-            id="btnZen"
-            aria-label={t('zenMode', lang)}
-            onClick={onToggleZen}
-          >
-            <Icon name="zen" />
-            <span className="tip">{t('zenMode', lang)} (Z)</span>
-          </button>
-
-          <button
-            className={`ib has-tip ${settingsOpen ? 'active' : ''}`}
-            id="btnSettings"
-            aria-label={t('settings', lang)}
-            aria-expanded={settingsOpen}
-            onClick={onOpenSettings}
-          >
-            <Icon name="gear" />
-            <span className="tip">{t('settings', lang)} (,)</span>
-          </button>
-
-          <button
-            className="ib has-tip"
-            id="btnFs"
-            aria-label={isFs ? t('exitFullscreen', lang) : t('fullscreen', lang)}
-            onClick={toggleFullscreen}
-          >
-            <Icon name={isFs ? 'compress' : 'expand'} />
-            <span className="tip">
-              {isFs ? t('exitFullscreen', lang) : t('fullscreen', lang)} (F)
-            </span>
-          </button>
         </nav>
       )}
 
-      {/* Floating Zen Mode Exit Pill (Unobtrusive, centered at bottom) */}
+      {/* Floating Zen Mode Exit Pill */}
       {zenMode && (
         <button
           type="button"

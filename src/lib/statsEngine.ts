@@ -35,9 +35,15 @@ export interface ComputedStats {
   todayFocusMs: number;
   todayGoalMs: number;
   todayProgressRatio: number;
+  todayGoalMet: boolean;
   dailyFocusMap: Map<string, number>;
   taskDistribution: TaskFocusStat[];
   generateHeatmap: (weeks: number) => HeatmapCell[];
+}
+
+export function isStreakGoalMet(todayFocusMs: number, streakGoalMinutes: number = 25): boolean {
+  const goalMs = Math.max(1, streakGoalMinutes) * 60000;
+  return todayFocusMs >= goalMs;
 }
 
 /**
@@ -259,6 +265,7 @@ export function computeStats(
     todayFocusMs,
     todayGoalMs: goalMs,
     todayProgressRatio,
+    todayGoalMet: todayFocusMs >= goalMs,
     dailyFocusMap,
     taskDistribution,
     generateHeatmap,

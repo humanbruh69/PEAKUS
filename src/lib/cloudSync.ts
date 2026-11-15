@@ -103,6 +103,27 @@ export function cleanSettingsForCloud(settings: Settings): Settings {
 }
 
 /**
+ * Preserve device-local uploaded backgrounds (photo/video in IndexedDB) when incoming
+ * cloud settings only hold the sanitized 'cafe' fallback from cleanSettingsForCloud.
+ */
+export function mergeRemoteSettingsWithLocalUploads(
+  remoteSettings: Settings,
+  localSettings: Settings
+): Settings {
+  const merged = JSON.parse(JSON.stringify(remoteSettings)) as Settings;
+  (['home', 'focus', 'ambient'] as const).forEach(mode => {
+    const localBg = localSettings?.modes?.[mode]?.bg;
+    const remoteBg = merged?.modes?.[mode]?.bg;
+    const isLocalBg = localBg?.kind === 'upload' || localBg?.kind === 'videoUpload';
+    const isFallbackCafe = !remoteBg || (remoteBg.kind === 'scene' && remoteBg.id === 'cafe');
+    if (isLocalBg && isFallbackCafe) {
+      merged.modes[mode].bg = JSON.parse(JSON.stringify(localBg));
+    }
+  });
+  return merged;
+}
+
+/**
  * Check if a user document exists in Firestore
  */
 export async function fetchUserCloudData(userId: string): Promise<CloudUserData | null> {

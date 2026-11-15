@@ -11,7 +11,17 @@ import type {
 import { Store } from './lib/store';
 import { audioX } from './lib/audio';
 import { sync } from './lib/sync';
-import { hexToRgb, fmtClock, fmtDur, uid, dayKey, startOfDay, addDays } from './lib/utils';
+import {
+  hexToRgb,
+  normalizeHex,
+  getContrastTextColor,
+  fmtClock,
+  fmtDur,
+  uid,
+  dayKey,
+  startOfDay,
+  addDays,
+} from './lib/utils';
 import { DEFAULTS } from './lib/constants';
 import { t } from './lib/i18n';
 import {
@@ -35,16 +45,16 @@ import { ProPrankModal, PRO_PRANK_KEY } from './components/ProPrankModal';
 import { FlowPromptModal } from './components/FlowPromptModal';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { auth, testConnection } from './lib/firebase';
-import { pushAllToCloud, subscribeToCloud, initializeNewUserCloud, fetchUserCloudData, clearLocalDeviceWorkspace } from './lib/cloudSync';
+import { pushAllToCloud, subscribeToCloud, initializeNewUserCloud, fetchUserCloudData, clearLocalDeviceWorkspace, mergeRemoteSettingsWithLocalUploads } from './lib/cloudSync';
 import { AuthGatewayModal } from './components/AuthGatewayModal';
 import { ResetSegmentModal } from './components/ResetSegmentModal';
 import { OfflineBackgroundModal } from './components/OfflineBackgroundModal';
-import { StudyRoomModal } from './components/StudyRoomModal';
 import { broadcastRoomTimer, updateMemberPresence, subscribeToStudyRoom } from './lib/studyRooms';
 import { getSavedLinks, setAllSavedLinks, SavedLinkItem } from './lib/savedLinks';
 import { computeStats } from './lib/statsEngine';
 import { StudyBotPopover } from './components/StudyBotPopover';
-import { toLocalDateKey } from './lib/pomodoroEngine';
+import { toLocalDateKey, recordPartialFocusStat } from './lib/pomodoroEngine';
+import type { SettingsSectionKey } from './components/SettingsModal';
 
 export const App: React.FC = () => {
   const [settings, setSettings] = useState<Settings>(() => Store.loadSettings());
@@ -65,6 +75,7 @@ export const App: React.FC = () => {
 
   // Flow Continuation State
   const [showFlowPrompt, setShowFlowPrompt] = useState(false);
+  const flowExtendedRef = useRef(false);
   const pendingBreakRef = useRef<{
     nextPhase: TimerPhase;
     durationMs: number;
@@ -95,7 +106,13 @@ export const App: React.FC = () => {
   }, []);
 
   // First-time opening pro prank modal
+  const isLocalPreviewBypass =
+    typeof window !== 'undefined' &&
+    (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') &&
+    new URLSearchParams(window.location.search).get('autostart') === '1';
+
   const [showProPrank, setShowProPrank] = useState(() => {
+    if (isLocalPreviewBypass) return false;
     try {
       return !localStorage.getItem(PRO_PRANK_KEY);
     } catch {
@@ -109,7 +126,7 @@ export const App: React.FC = () => {
   const [notesOpen, setNotesOpen] = useState(false);
   const [musicOpen, setMusicOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [roomOpen, setRoomOpen] = useState(false);
+  const [requestedSettingsSection, setRequestedSettingsSection] = useState<SettingsSectionKey | null>(null);
   const [studyBotOpen, setStudyBotOpen] = useState(false);
   const [currentRoomCode, setCurrentRoomCode] = useState<string | null>(() => {
     try {
@@ -216,8 +233,10 @@ export const App: React.FC = () => {
   useEffect(() => {
     const s = settings;
     const r = document.documentElement.style;
-    const [R, G, B] = hexToRgb(s.appearance.accent);
-    r.setProperty('--accent', s.appearance.accent);
+    const accent = normalizeHex(s.appearance.accent) || '#5e6ad2';
+    const clockColor = normalizeHex(s.clock.color) || '#ffffff';
+    const [R, G, B] = hexToRgb(accent);
+    r.setProperty('--accent', accent);
     r.setProperty('--accent-rgb', `${R}, ${G}, ${B}`);
     r.setProperty('--accent-soft', `rgba(${R}, ${G}, ${B}, 0.22)`);
     r.setProperty('--accent-glow', `rgba(${R}, ${G}, ${B}, 0.5)`);
@@ -225,7 +244,8 @@ export const App: React.FC = () => {
     r.setProperty('--accent-dark', `rgba(${R}, ${G}, ${B}, 0.12)`);
     const mix = (v: number) => Math.round(v + (255 - v) * 0.45);
     r.setProperty('--accent-text', `rgb(${mix(R)}, ${mix(G)}, ${mix(B)})`);
-    r.setProperty('--clock-color', s.clock.color);
+    r.setProperty('--accent-contrast', getContrastTextColor(accent));
+    r.setProperty('--clock-color', clockColor);
     r.setProperty('--clock-scale', String(s.clock.size / 100));
   }, [settings.appearance.accent, settings.clock.color, settings.clock.size]);
 
@@ -238,7 +258,12 @@ export const App: React.FC = () => {
   useEffect(() => {
     sync.setCallbacks({
       getSettings: () => settingsRef.current,
-      onRemoteSettings: nextSettings => setSettings(nextSettings),
+      onRemoteSettings: nextSettings => {
+        const merged = Store.normSettings(
+          mergeRemoteSettingsWithLocalUploads(nextSettings, settingsRef.current)
+        );
+        setSettings(merged);
+      },
       onRemoteTasks: nextTasks => {
         setTasks(nextTasks);
         Store.saveTaskItems(nextTasks);
@@ -265,14 +290,16 @@ export const App: React.FC = () => {
       }
 
       if (!user) {
-        clearLocalDeviceWorkspace();
+        if (!isLocalPreviewBypass) {
+          clearLocalDeviceWorkspace();
+          setSettings(DEFAULTS);
+          setSessions([]);
+          setTasks([]);
+          setPresets(DEFAULT_PRESETS);
+          sessionsRef.current = [];
+          setStudyBotOpen(false);
+        }
         setCurrentUser(null);
-        setSettings(DEFAULTS);
-        setSessions([]);
-        setTasks([]);
-        setPresets(DEFAULT_PRESETS);
-        sessionsRef.current = [];
-        setStudyBotOpen(false);
         setAuthChecking(false);
         cloudLoadedUserRef.current = null;
         return;
@@ -310,10 +337,19 @@ export const App: React.FC = () => {
           },
           onSettings: (remoteSettings, hadOfflineBg) => {
             cloudLoadedUserRef.current = user.uid;
-            const normalized = Store.normSettings(remoteSettings);
+            const mergedRemote = mergeRemoteSettingsWithLocalUploads(
+              remoteSettings,
+              settingsRef.current
+            );
+            const normalized = Store.normSettings(mergedRemote);
             setSettings(normalized);
             Store.saveSettings(normalized);
-            if (hadOfflineBg) {
+            const hasLocalUpload = (['home', 'focus', 'ambient'] as const).some(
+              m =>
+                normalized.modes[m]?.bg?.kind === 'upload' ||
+                normalized.modes[m]?.bg?.kind === 'videoUpload'
+            );
+            if (hadOfflineBg && !hasLocalUpload) {
               setShowOfflineBgModal(true);
             }
           },
@@ -748,6 +784,7 @@ export const App: React.FC = () => {
   const handleContinueFlow = useCallback(() => {
     setShowFlowPrompt(false);
     pendingBreakRef.current = null;
+    flowExtendedRef.current = true;
     const tenMinutesMs = 10 * 60 * 1000;
     const now = Date.now();
     const nextState: TimerState = {
@@ -756,40 +793,50 @@ export const App: React.FC = () => {
       status: 'running',
       remainingMs: tenMinutesMs,
       durationMs: tenMinutesMs,
+      targetEndTime: now + tenMinutesMs,
       startedAt: now,
       sessionStartedAt: now,
       interrupted: false,
     };
     setTimerState(nextState);
     Store.saveTimer(nextState);
-    addToast(t('flowAddedToast', settings.language || 'en'));
-  }, [settings.language, addToast]);
+    broadcastIfHost(nextState);
+    if (auth.currentUser && cloudLoadedUserRef.current === auth.currentUser.uid) {
+      pushAllToCloud(auth.currentUser.uid, settingsRef.current, nextState);
+    }
+    addToast(t('flowAddedToast', settingsRef.current.language || 'en'));
+  }, [addToast, broadcastIfHost]);
 
   const handleCancelFlow = useCallback(() => {
     setShowFlowPrompt(false);
+    flowExtendedRef.current = false;
     const pending = pendingBreakRef.current;
     const now = Date.now();
     const currentS = settingsRef.current;
-    const tSettings = currentS.timer;
     const currentLang = currentS.language || 'en';
-    let nextPhase: TimerPhase = pending?.nextPhase || 'short';
-    let nextDuration = pending?.durationMs || getPhaseDuration(nextPhase, currentS);
-    let autoStart = pending?.autoStart ?? tSettings.autoBreak;
-    let nextCycle = pending?.nextCycle ?? (timerRef.current.cycle + 1);
+    const nextPhase: TimerPhase = pending?.nextPhase || 'short';
+    const nextDuration = pending?.durationMs || getPhaseDuration(nextPhase, currentS);
+    const nextCycle = pending?.nextCycle ?? (timerRef.current.cycle + 1);
+    pendingBreakRef.current = null;
 
+    // Taking a break from the Flow prompt (either click or auto-countdown 0s) starts the break immediately
     const nextState: TimerState = {
-      status: autoStart ? 'running' : 'idle',
+      status: 'running',
       phase: nextPhase,
       remainingMs: nextDuration,
       durationMs: nextDuration,
       cycle: nextCycle,
-      startedAt: autoStart ? now : null,
-      sessionStartedAt: autoStart ? now : null,
+      targetEndTime: now + nextDuration,
+      startedAt: now,
+      sessionStartedAt: now,
       interrupted: false,
     };
     setTimerState(nextState);
     Store.saveTimer(nextState);
-    pendingBreakRef.current = null;
+    broadcastIfHost(nextState);
+    if (auth.currentUser && cloudLoadedUserRef.current === auth.currentUser.uid) {
+      pushAllToCloud(auth.currentUser.uid, currentS, nextState);
+    }
 
     const nextName =
       nextPhase === 'focus'
@@ -798,8 +845,8 @@ export const App: React.FC = () => {
         ? t('phaseShort', currentLang)
         : t('phaseLong', currentLang);
 
-    addToast(autoStart ? `Starting ${nextName}.` : `Ready for ${nextName}?`);
-  }, [getPhaseDuration, addToast]);
+    addToast(`Starting ${nextName}.`);
+  }, [getPhaseDuration, addToast, broadcastIfHost]);
 
   const handleToggleFlowMode = useCallback(() => {
     const nextVal = !settings.timer.flowMode;
@@ -955,39 +1002,46 @@ export const App: React.FC = () => {
     }
   };
 
-  const handleResetTimer = () => {
-    const cur = timerRef.current;
-    const executeReset = () => {
-      const duration = getPhaseDuration(cur.phase, settings);
-      const next: TimerState = {
-        ...cur,
-        status: 'idle',
-        remainingMs: duration,
-        durationMs: duration,
-        targetEndTime: null,
-        startedAt: null,
-        sessionStartedAt: null,
-      };
-      setTimerState(next);
-      Store.saveTimer(next);
-      broadcastIfHost(next);
-      if (auth.currentUser && cloudLoadedUserRef.current === auth.currentUser.uid) {
-        pushAllToCloud(auth.currentUser.uid, settingsRef.current, next);
-      }
-    };
+  const saveElapsedFocusBeforeReset = useCallback((cur: TimerState) => {
+    const now = Date.now();
+    const rem =
+      cur.status === 'running' && cur.targetEndTime
+        ? Math.max(0, cur.targetEndTime - now)
+        : cur.remainingMs;
+    const elapsed = Math.max(0, cur.durationMs - rem);
+    let nextSessions = sessionsRef.current;
+    let nextFocusStats = Store.loadFocusStats();
+    let savedMs = 0;
 
-    if (cur.status !== 'idle' || cur.remainingMs < cur.durationMs) {
-      askConfirm(
-        'Restart Current Segment?',
-        'Are you sure you want to restart this segment? Elapsed focus progress in this session will be reset.',
-        'Restart Timer',
-        executeReset,
-        true
-      );
-    } else {
-      executeReset();
+    if (cur.phase === 'focus' && elapsed >= 1000) {
+      savedMs = elapsed;
+      const partialSession: Session = {
+        id: uid('s'),
+        kind: 'focus',
+        phase: 'focus',
+        start: cur.sessionStartedAt || (now - elapsed),
+        end: now,
+        ms: elapsed,
+        completed: false,
+        taskId: activeTask ? activeTask.id : null,
+        title: activeTask ? activeTask.title : settingsRef.current.timer.label || 'Focus',
+      };
+      nextSessions = [partialSession, ...sessionsRef.current];
+      setSessions(nextSessions);
+      Store.saveSessions(nextSessions);
+
+      const statRes = recordPartialFocusStat(nextFocusStats, elapsed, now);
+      nextFocusStats = statRes.nextStats;
+      Store.saveFocusStats(nextFocusStats);
+      sync.touch();
     }
-  };
+
+    return { nextSessions, nextFocusStats, savedMs };
+  }, [activeTask]);
+
+  const handleResetTimer = useCallback(() => {
+    setShowResetSegmentModal(true);
+  }, []);
 
   const handleRequestResetSegments = useCallback(() => {
     setShowResetSegmentModal(true);
@@ -995,6 +1049,11 @@ export const App: React.FC = () => {
 
   const handleConfirmResetCurrentSegment = useCallback(() => {
     const cur = timerRef.current;
+    const { nextSessions, nextFocusStats, savedMs } = saveElapsedFocusBeforeReset(cur);
+    flowExtendedRef.current = false;
+    pendingBreakRef.current = null;
+    setShowFlowPrompt(false);
+
     const dur = getPhaseDuration(cur.phase, settingsRef.current);
     const next: TimerState = {
       ...cur,
@@ -1004,17 +1063,35 @@ export const App: React.FC = () => {
       targetEndTime: null,
       startedAt: null,
       sessionStartedAt: null,
+      interrupted: false,
     };
     setTimerState(next);
     Store.saveTimer(next);
-    addToast('Current segment restarted.');
+    broadcastIfHost(next);
+    addToast(
+      savedMs >= 1000
+        ? `This part reset (${fmtDur(savedMs)} focus saved).`
+        : 'This part reset.'
+    );
     if (auth.currentUser && cloudLoadedUserRef.current === auth.currentUser.uid) {
-      pushAllToCloud(auth.currentUser.uid, settingsRef.current, next);
+      pushAllToCloud(
+        auth.currentUser.uid,
+        settingsRef.current,
+        next,
+        savedMs >= 1000
+          ? { customHistory: { sessions: nextSessions }, customFocusStats: nextFocusStats }
+          : undefined
+      );
     }
-  }, [getPhaseDuration, addToast]);
+  }, [getPhaseDuration, addToast, saveElapsedFocusBeforeReset, broadcastIfHost]);
 
   const handleConfirmResetAllSegments = useCallback(() => {
     const cur = timerRef.current;
+    const { nextSessions, nextFocusStats, savedMs } = saveElapsedFocusBeforeReset(cur);
+    flowExtendedRef.current = false;
+    pendingBreakRef.current = null;
+    setShowFlowPrompt(false);
+
     const dur = getPhaseDuration('focus', settingsRef.current);
     const target = settingsRef.current.timer.cycles || 4;
     const next: TimerState = {
@@ -1023,18 +1100,31 @@ export const App: React.FC = () => {
       phase: 'focus',
       remainingMs: dur,
       durationMs: dur,
-      cycle: 0, // Reset cycleTally back to 0
+      cycle: 0,
       targetEndTime: null,
       startedAt: null,
       sessionStartedAt: null,
+      interrupted: false,
     };
     setTimerState(next);
     Store.saveTimer(next);
-    addToast(`All cycle segments reset (0/${target}).`);
+    broadcastIfHost(next);
+    addToast(
+      savedMs >= 1000
+        ? `Whole session reset (0/${target} · ${fmtDur(savedMs)} focus saved).`
+        : `Whole session reset (0/${target}).`
+    );
     if (auth.currentUser && cloudLoadedUserRef.current === auth.currentUser.uid) {
-      pushAllToCloud(auth.currentUser.uid, settingsRef.current, next);
+      pushAllToCloud(
+        auth.currentUser.uid,
+        settingsRef.current,
+        next,
+        savedMs >= 1000
+          ? { customHistory: { sessions: nextSessions }, customFocusStats: nextFocusStats }
+          : undefined
+      );
     }
-  }, [getPhaseDuration, addToast]);
+  }, [getPhaseDuration, addToast, saveElapsedFocusBeforeReset, broadcastIfHost]);
 
   const handleSkipTimer = () => {
     const cur = timerRef.current;
@@ -1124,7 +1214,7 @@ export const App: React.FC = () => {
     }
     let zenTimer: any = null;
     const isEligible = () => {
-      if (tasksOpen || soundsOpen || notesOpen || musicOpen || settingsOpen || roomOpen || studyBotOpen || confirmModal?.open) {
+      if (tasksOpen || soundsOpen || notesOpen || musicOpen || settingsOpen || studyBotOpen || confirmModal?.open) {
         return false;
       }
       return settings.mode === 'ambient' || timerRef.current.status === 'running';
@@ -1156,7 +1246,6 @@ export const App: React.FC = () => {
     notesOpen,
     musicOpen,
     settingsOpen,
-    roomOpen,
     studyBotOpen,
     confirmModal,
   ]);
@@ -1166,11 +1255,6 @@ export const App: React.FC = () => {
     const handleKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         if (confirmModal?.open) return;
-        if (roomOpen) {
-          e.preventDefault();
-          setRoomOpen(false);
-          return;
-        }
         if (studyBotOpen) {
           e.preventDefault();
           setStudyBotOpen(false);
@@ -1250,7 +1334,6 @@ export const App: React.FC = () => {
         setNotesOpen(false);
         setMusicOpen(false);
         setSettingsOpen(false);
-        setRoomOpen(false);
       }
     };
     window.addEventListener('keydown', handleKey);
@@ -1298,7 +1381,7 @@ export const App: React.FC = () => {
   };
 
   // If auth is still checking initial state, display clean loading splash
-  if (authChecking) {
+  if (authChecking && !isLocalPreviewBypass) {
     return (
       <div
         style={{
@@ -1333,7 +1416,7 @@ export const App: React.FC = () => {
   }
 
   // If user is not authenticated, render the mandatory full-screen Auth Gateway
-  if (!currentUser) {
+  if (!currentUser && !isLocalPreviewBypass) {
     return (
       <>
         <AuthGatewayModal onToast={addToast} lang={lang} />
@@ -1351,11 +1434,12 @@ export const App: React.FC = () => {
       <Background
         settings={settings}
         onUpdateModeBg={(m: ModeKey, newBg: any) => {
+          const cur = settingsRef.current;
           const next = {
-            ...settings,
+            ...cur,
             modes: {
-              ...settings.modes,
-              [m]: { ...settings.modes[m], bg: newBg },
+              ...cur.modes,
+              [m]: { ...cur.modes[m], bg: newBg },
             },
           };
           handleUpdateSettings(next, `modes.${m}.bg`);
@@ -1417,11 +1501,21 @@ export const App: React.FC = () => {
           setNotesOpen(false);
         }}
         onOpenSettings={() => {
+          setRequestedSettingsSection(null);
           setSettingsOpen(true);
           setTasksOpen(false);
           setSoundsOpen(false);
           setNotesOpen(false);
           setMusicOpen(false);
+        }}
+        onOpenThemes={() => {
+          setRequestedSettingsSection('themes');
+          setSettingsOpen(true);
+          setTasksOpen(false);
+          setSoundsOpen(false);
+          setNotesOpen(false);
+          setMusicOpen(false);
+          setStudyBotOpen(false);
         }}
         tasksOpen={tasksOpen}
         soundsOpen={soundsOpen}
@@ -1429,22 +1523,24 @@ export const App: React.FC = () => {
         musicOpen={musicOpen}
         settingsOpen={settingsOpen}
         streakCount={streakCount}
+        streakGoalMet={computedStats.todayGoalMet}
+        todayFocusMs={computedStats.todayFocusMs}
+        todayGoalMs={computedStats.todayGoalMs}
+        onOpenStats={() => {
+          setRequestedSettingsSection('stats');
+          setSettingsOpen(true);
+          setTasksOpen(false);
+          setSoundsOpen(false);
+          setNotesOpen(false);
+          setMusicOpen(false);
+          setStudyBotOpen(false);
+        }}
         zenMode={zenMode}
         onToggleZen={handleToggleZen}
         presets={presets}
         onSelectPreset={handleSelectPreset}
         flowMode={!!settings.timer.flowMode}
         onToggleFlowMode={handleToggleFlowMode}
-        roomOpen={roomOpen}
-        onOpenRoom={() => {
-          setRoomOpen(true);
-          setTasksOpen(false);
-          setSoundsOpen(false);
-          setNotesOpen(false);
-          setMusicOpen(false);
-          setSettingsOpen(false);
-          setStudyBotOpen(false);
-        }}
         currentRoomCode={currentRoomCode}
         studyBotOpen={studyBotOpen}
         onOpenStudyBot={() => {
@@ -1454,7 +1550,6 @@ export const App: React.FC = () => {
           setNotesOpen(false);
           setMusicOpen(false);
           setSettingsOpen(false);
-          setRoomOpen(false);
         }}
       />
 
@@ -1505,7 +1600,10 @@ export const App: React.FC = () => {
       {/* Settings Modal */}
       <SettingsModal
         open={settingsOpen}
-        onClose={() => setSettingsOpen(false)}
+        onClose={() => {
+          setSettingsOpen(false);
+          setRequestedSettingsSection(null);
+        }}
         settings={settings}
         onUpdateSettings={handleUpdateSettings}
         tasks={tasks}
@@ -1529,6 +1627,15 @@ export const App: React.FC = () => {
         onSavePreset={handleSavePreset}
         onSelectPreset={handleSelectPreset}
         timerState={timerState}
+        requestedSection={requestedSettingsSection}
+        activeTask={activeTask}
+        currentRoomCode={currentRoomCode}
+        onJoinedRoom={code => {
+          setCurrentRoomCode(code);
+        }}
+        onLeftRoom={() => {
+          setCurrentRoomCode(null);
+        }}
       />
 
       {/* Confirm Modal */}
@@ -1559,24 +1666,6 @@ export const App: React.FC = () => {
         language={lang}
         onContinue={handleContinueFlow}
         onCancel={handleCancelFlow}
-      />
-
-      {/* Collaborative Study Room Modal */}
-      <StudyRoomModal
-        isOpen={roomOpen}
-        onClose={() => setRoomOpen(false)}
-        timerState={timerState}
-        activeTask={activeTask}
-        todayFocusMs={computedStats.todayFocusMs}
-        onToast={addToast}
-        currentRoomCode={currentRoomCode}
-        onJoinedRoom={code => {
-          setCurrentRoomCode(code);
-        }}
-        onLeftRoom={() => {
-          setCurrentRoomCode(null);
-          setRoomOpen(false);
-        }}
       />
 
       {/* Study Bot Popover (Gemini AI Tutor) */}

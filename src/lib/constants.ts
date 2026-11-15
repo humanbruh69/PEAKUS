@@ -50,6 +50,7 @@ export const DEFAULTS: Settings = {
     rotation: 'daily',
     custom: '',
     useCustom: false,
+    toxicMotivation: false,
   },
   appearance: {
     accent: '#5e6ad2',

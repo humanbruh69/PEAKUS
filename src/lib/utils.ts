@@ -58,10 +58,36 @@ export const U = {
     };
   },
   hexToRgb(hex: string): [number, number, number] {
-    const m = /^#?([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i.exec(hex || '');
-    return m ? [parseInt(m[1], 16), parseInt(m[2], 16), parseInt(m[3], 16)] : [124, 58, 237];
+    const norm = U.normalizeHex(hex);
+    if (!norm) return [94, 106, 210];
+    const m = /^#([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i.exec(norm);
+    return m ? [parseInt(m[1], 16), parseInt(m[2], 16), parseInt(m[3], 16)] : [94, 106, 210];
   },
-  isHex: (v: any): boolean => typeof v === 'string' && /^#[\da-f]{6}$/i.test(v),
+  normalizeHex(v: any): string | null {
+    if (typeof v !== 'string') return null;
+    const raw = v.trim().replace(/^#/, '');
+    if (/^[\da-f]{6}$/i.test(raw)) {
+      return `#${raw.toLowerCase()}`;
+    }
+    if (/^[\da-f]{3}$/i.test(raw)) {
+      const expanded = raw
+        .split('')
+        .map(ch => ch + ch)
+        .join('');
+      return `#${expanded.toLowerCase()}`;
+    }
+    return null;
+  },
+  isHex: (v: any): boolean => U.normalizeHex(v) !== null,
+  getContrastTextColor(hex: string): '#ffffff' | '#0d0e16' {
+    const [r, g, b] = U.hexToRgb(hex);
+    const toLinear = (c: number) => {
+      const s = c / 255;
+      return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+    };
+    const luminance = 0.2126 * toLinear(r) + 0.7152 * toLinear(g) + 0.0722 * toLinear(b);
+    return luminance > 0.45 ? '#0d0e16' : '#ffffff';
+  },
   hashStr(s: string) {
     let h = 2166136261;
     for (let i = 0; i < s.length; i++) {
@@ -87,6 +113,8 @@ export const {
   fmtClock,
   debounce,
   hexToRgb,
+  normalizeHex,
   isHex,
+  getContrastTextColor,
   hashStr,
 } = U;

@@ -50,7 +50,10 @@ export const Store = (() => {
   function normBg(bg: any): BackgroundConfig | null {
     if (!U.isObj(bg)) return null;
     if (bg.kind === 'scene' && typeof bg.id === 'string') return { kind: 'scene', id: bg.id };
-    if (bg.kind === 'color' && U.isHex(bg.color)) return { kind: 'color', color: bg.color };
+    if (bg.kind === 'color') {
+      const norm = U.normalizeHex(bg.color);
+      if (norm) return { kind: 'color', color: norm };
+    }
     if (bg.kind === 'upload' && typeof bg.id === 'string') return { kind: 'upload', id: bg.id };
     if (bg.kind === 'youtube' && typeof bg.youtubeId === 'string') {
       return { kind: 'youtube', youtubeId: bg.youtubeId, youtubeTitle: bg.youtubeTitle || '' };
@@ -110,14 +113,15 @@ export const Store = (() => {
     if (!['12', '24'].includes(c.format)) c.format = '12';
     if (!['bold', 'thin', 'minimal', 'serif', 'hand', 'minimal-light', 'serif-condensed', 'outfit', 'plus-jakarta', 'dm-sans', 'fraunces', 'space-mono', 'syne'].includes(c.style)) c.style = 'bold';
     c.size = intIn(c.size, 50, 170, 100);
-    if (!U.isHex(c.color)) c.color = '#ffffff';
+    c.color = U.normalizeHex(c.color) || '#ffffff';
 
-    if (!U.isHex(s.appearance.accent)) s.appearance.accent = DEFAULTS.appearance.accent;
+    s.appearance.accent = U.normalizeHex(s.appearance.accent) || DEFAULTS.appearance.accent;
     if (!['auto', 'on', 'off'].includes(s.appearance.animation)) s.appearance.animation = 'auto';
     s.appearance.autoHideDelay = intIn(s.appearance.autoHideDelay, 2, 60, 5);
 
     if (!['daily', 'hourly', 'visit'].includes(s.quotes.rotation)) s.quotes.rotation = 'daily';
     s.quotes.custom = String(s.quotes.custom || '').slice(0, 200);
+    s.quotes.toxicMotivation = !!s.quotes.toxicMotivation;
     s.name = String(s.name || '').slice(0, 40);
     s.sounds.master = intIn(s.sounds.master, 0, 100, 70);
 

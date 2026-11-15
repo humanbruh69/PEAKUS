@@ -420,3 +420,149 @@ export function switchPhase(
     sessionStartedAt: null,
   };
 }
+
+/**
+ * Compute accurate elapsed milliseconds for the current segment using wall-clock delta
+ */
+export function calculateElapsedMs(state: PomodoroState, now = Date.now()): number {
+  const remaining =
+    state.status === 'running' && state.targetEndTime !== null
+      ? Math.max(0, state.targetEndTime - now)
+      : Math.max(0, state.remainingMs);
+  return Math.max(0, state.durationMs - remaining);
+}
+
+/**
+ * Record partial elapsed focus time into daily historical stats ("Your focus time is saved, even when you reset")
+ */
+export function recordPartialFocusStat(
+  currentStats: FocusStatsMap = {},
+  elapsedMs: number,
+  now = Date.now(),
+  minThresholdMs = 1000
+): { nextStats: FocusStatsMap; savedMs: number; dateKey: string } {
+  const dateKey = toLocalDateKey(now);
+  if (elapsedMs < minThresholdMs) {
+    return { nextStats: currentStats, savedMs: 0, dateKey };
+  }
+
+  const existingDayStat: DayFocusStatRecord = currentStats[dateKey] || {
+    date: dateKey,
+    focusMinutes: 0,
+    focusMs: 0,
+    sessionCount: 0,
+    breakMinutes: 0,
+    breakMs: 0,
+  };
+
+  const nextFocusMs = existingDayStat.focusMs + elapsedMs;
+  const nextStats: FocusStatsMap = {
+    ...currentStats,
+    [dateKey]: {
+      ...existingDayStat,
+      focusMs: nextFocusMs,
+      focusMinutes: Math.round(nextFocusMs / 60000),
+    },
+  };
+
+  return { nextStats, savedMs: elapsedMs, dateKey };
+}
+
+/**
+ * Reset current segment (Reset this part) while saving any elapsed FOCUS time
+ */
+export function resetSegmentSavingFocus(
+  state: PomodoroState,
+  settings: PomodoroSettings,
+  currentStats: FocusStatsMap = {},
+  now = Date.now()
+): { nextState: PomodoroState; nextStats: FocusStatsMap; savedFocusMs: number } {
+  const elapsedMs = calculateElapsedMs(state, now);
+  let nextStats = currentStats;
+  let savedFocusMs = 0;
+
+  if (state.phase === 'FOCUS') {
+    const res = recordPartialFocusStat(currentStats, elapsedMs, now);
+    nextStats = res.nextStats;
+    savedFocusMs = res.savedMs;
+  }
+
+  return {
+    nextState: resetCurrentSegment(state, settings),
+    nextStats,
+    savedFocusMs,
+  };
+}
+
+/**
+ * Reset whole cycle (Reset whole session) back to 0 / FOCUS while saving any elapsed FOCUS time
+ */
+export function resetWholeSessionSavingFocus(
+  state: PomodoroState,
+  settings: PomodoroSettings,
+  currentStats: FocusStatsMap = {},
+  now = Date.now()
+): { nextState: PomodoroState; nextStats: FocusStatsMap; savedFocusMs: number } {
+  const elapsedMs = calculateElapsedMs(state, now);
+  let nextStats = currentStats;
+  let savedFocusMs = 0;
+
+  if (state.phase === 'FOCUS') {
+    const res = recordPartialFocusStat(currentStats, elapsedMs, now);
+    nextStats = res.nextStats;
+    savedFocusMs = res.savedMs;
+  }
+
+  return {
+    nextState: resetCycle(settings, now),
+    nextStats,
+    savedFocusMs,
+  };
+}
+
+/**
+ * Flow Mode: Extend focus by extraMinutes (default +10 min) with a drift-free targetEndTime
+ */
+export function extendFlowFocus(
+  state: PomodoroState,
+  now = Date.now(),
+  extraMinutes = 10
+): PomodoroState {
+  const extraMs = Math.max(1, extraMinutes) * 60 * 1000;
+  return {
+    ...state,
+    phase: 'FOCUS',
+    status: 'running',
+    durationMs: extraMs,
+    remainingMs: extraMs,
+    targetEndTime: now + extraMs,
+    startedAt: now,
+    sessionStartedAt: now,
+  };
+}
+
+/**
+ * Flow Mode: Transition from Flow prompt ("Take a Break" or countdown reaching 0s)
+ * Starts the break immediately with a drift-free targetEndTime and increments cycleTally once.
+ */
+export function takeBreakFromFlow(
+  state: PomodoroState,
+  settings: PomodoroSettings,
+  now = Date.now()
+): PomodoroState {
+  const target = Math.max(1, settings.targetTally || 4);
+  const nextTally = state.cycleTally + 1;
+  const nextPhase: PomodoroPhase = nextTally < target ? 'SHORT_BREAK' : 'LONG_BREAK';
+  const nextDur = getPhaseDurationMs(nextPhase, settings);
+
+  return {
+    phase: nextPhase,
+    status: 'running',
+    cycleTally: nextTally,
+    durationMs: nextDur,
+    remainingMs: nextDur,
+    targetEndTime: now + nextDur,
+    startedAt: now,
+    sessionStartedAt: now,
+  };
+}

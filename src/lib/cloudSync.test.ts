@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cleanSettingsForCloud, checkAndSanitizeSettings } from './cloudSync';
+import { cleanSettingsForCloud, checkAndSanitizeSettings, mergeRemoteSettingsWithLocalUploads } from './cloudSync';
 import { DEFAULTS } from './constants';
 import type { Settings } from '../types';
 
@@ -97,3 +97,57 @@ test('checkAndSanitizeSettings normalizes partial settings and prevents undefine
   assert.ok(!stringified.includes('undefined'));
 });
 
+test('mergeRemoteSettingsWithLocalUploads preserves local upload/videoUpload backgrounds when remote has fallback cafe', () => {
+  const localSettings: Settings = {
+    ...DEFAULTS,
+    modes: {
+      ...DEFAULTS.modes,
+      focus: {
+        ...DEFAULTS.modes.focus,
+        bg: { kind: 'upload', id: 'local-photo-123' },
+      },
+      ambient: {
+        ...DEFAULTS.modes.ambient,
+        bg: { kind: 'videoUpload', videoUploadId: 'local-video-456', videoName: 'rain.mp4' },
+      },
+    },
+  };
+
+  // Simulated cloud echo after skipping a break where cleanSettingsForCloud replaced uploads with cafe
+  const remoteFromCloudEcho: Settings = {
+    ...DEFAULTS,
+    modes: {
+      ...DEFAULTS.modes,
+      focus: {
+        ...DEFAULTS.modes.focus,
+        bg: { kind: 'scene', id: 'cafe' },
+      },
+      ambient: {
+        ...DEFAULTS.modes.ambient,
+        bg: { kind: 'scene', id: 'cafe' },
+      },
+    },
+  };
+
+  const merged = mergeRemoteSettingsWithLocalUploads(remoteFromCloudEcho, localSettings);
+  assert.equal(merged.modes.focus.bg.kind, 'upload');
+  assert.equal(merged.modes.focus.bg.id, 'local-photo-123');
+  assert.equal(merged.modes.ambient.bg.kind, 'videoUpload');
+  assert.equal(merged.modes.ambient.bg.videoUploadId, 'local-video-456');
+
+  // Intentional remote change to a non-cafe scene should take precedence
+  const remoteExplicitScene: Settings = {
+    ...DEFAULTS,
+    modes: {
+      ...DEFAULTS.modes,
+      focus: {
+        ...DEFAULTS.modes.focus,
+        bg: { kind: 'scene', id: 'bosque' },
+      },
+    },
+  };
+
+  const mergedExplicit = mergeRemoteSettingsWithLocalUploads(remoteExplicitScene, localSettings);
+  assert.equal(mergedExplicit.modes.focus.bg.kind, 'scene');
+  assert.equal(mergedExplicit.modes.focus.bg.id, 'bosque');
+});

@@ -10,6 +10,10 @@ import {
   skipPhase,
   resetCycle,
   resetCurrentSegment,
+  resetSegmentSavingFocus,
+  resetWholeSessionSavingFocus,
+  extendFlowFocus,
+  takeBreakFromFlow,
   toLocalDateKey,
   getPhaseDurationMs,
   toTimerPhase,
@@ -242,4 +246,67 @@ test('phase mapping helpers convert between PomodoroPhase and legacy timer phase
   assert.equal(fromTimerPhase('focus'), 'FOCUS');
   assert.equal(fromTimerPhase('short'), 'SHORT_BREAK');
   assert.equal(fromTimerPhase('long'), 'LONG_BREAK');
+});
+
+test('resetSegmentSavingFocus saves elapsed focus time to daily stats and preserves cycleTally', () => {
+  const baseTime = new Date('2026-11-12T10:00:00Z').getTime();
+  const dateKey = toLocalDateKey(baseTime);
+  const initial = {
+    ...createInitialPomodoroState(TEST_SETTINGS, 2),
+  };
+  const started = startTimer(initial, baseTime);
+
+  // User focuses for 12 minutes (720,000ms), then clicks "Reset this part"
+  const resetAt = baseTime + 12 * 60 * 1000;
+  const res = resetSegmentSavingFocus(started, TEST_SETTINGS, {}, resetAt);
+
+  assert.equal(res.savedFocusMs, 12 * 60 * 1000);
+  assert.equal(res.nextStats[dateKey].focusMinutes, 12);
+  assert.equal(res.nextState.cycleTally, 2);
+  assert.equal(res.nextState.phase, 'FOCUS');
+  assert.equal(res.nextState.status, 'idle');
+  assert.equal(res.nextState.remainingMs, 25 * 60 * 1000);
+  assert.equal(res.nextState.targetEndTime, null);
+});
+
+test('resetWholeSessionSavingFocus saves elapsed focus time and resets cycleTally to 0', () => {
+  const baseTime = new Date('2026-11-12T10:00:00Z').getTime();
+  const dateKey = toLocalDateKey(baseTime);
+  const initial = {
+    ...createInitialPomodoroState(TEST_SETTINGS, 3),
+  };
+  const started = startTimer(initial, baseTime);
+
+  // User focuses for 8 minutes, then clicks "Reset whole session"
+  const resetAt = baseTime + 8 * 60 * 1000;
+  const res = resetWholeSessionSavingFocus(started, TEST_SETTINGS, {}, resetAt);
+
+  assert.equal(res.savedFocusMs, 8 * 60 * 1000);
+  assert.equal(res.nextStats[dateKey].focusMinutes, 8);
+  assert.equal(res.nextState.cycleTally, 0);
+  assert.equal(res.nextState.phase, 'FOCUS');
+  assert.equal(res.nextState.status, 'idle');
+  assert.equal(res.nextState.remainingMs, 25 * 60 * 1000);
+});
+
+test('Flow mode extendFlowFocus sets drift-free 10m targetEndTime and takeBreakFromFlow starts break immediately', () => {
+  const now = 1700000000000;
+  const state = createInitialPomodoroState(TEST_SETTINGS, 1);
+
+  // Extend +10 min
+  const extended = extendFlowFocus(state, now, 10);
+  assert.equal(extended.phase, 'FOCUS');
+  assert.equal(extended.status, 'running');
+  assert.equal(extended.durationMs, 10 * 60 * 1000);
+  assert.equal(extended.remainingMs, 10 * 60 * 1000);
+  assert.equal(extended.targetEndTime, now + 10 * 60 * 1000);
+  assert.equal(extended.cycleTally, 1); // unchanged during extension
+
+  // Take a break after flow prompt -> increments tally once and starts break running
+  const breakState = takeBreakFromFlow(extended, TEST_SETTINGS, now + 5000);
+  assert.equal(breakState.phase, 'SHORT_BREAK');
+  assert.equal(breakState.status, 'running');
+  assert.equal(breakState.cycleTally, 2);
+  assert.equal(breakState.durationMs, 5 * 60 * 1000);
+  assert.equal(breakState.targetEndTime, now + 5000 + 5 * 60 * 1000);
 });

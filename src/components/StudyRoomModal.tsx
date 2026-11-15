@@ -18,9 +18,7 @@ import { TimerState, Task } from '../types';
 import { fmtDur } from '../lib/utils';
 import { auth } from '../lib/firebase';
 
-interface StudyRoomModalProps {
-  isOpen: boolean;
-  onClose: () => void;
+export interface StudyRoomPanelProps {
   timerState: TimerState;
   activeTask?: Task;
   todayFocusMs: number;
@@ -28,6 +26,13 @@ interface StudyRoomModalProps {
   currentRoomCode: string | null;
   onJoinedRoom: (code: string) => void;
   onLeftRoom: () => void;
+  embedded?: boolean;
+  onClose?: () => void;
+}
+
+interface StudyRoomModalProps extends Omit<StudyRoomPanelProps, 'embedded' | 'onClose'> {
+  isOpen: boolean;
+  onClose: () => void;
 }
 
 const QUICK_REACTIONS = [
@@ -39,9 +44,7 @@ const QUICK_REACTIONS = [
   { emoji: '🚀', label: 'Let’s gooo!' },
 ];
 
-export const StudyRoomModal: React.FC<StudyRoomModalProps> = ({
-  isOpen,
-  onClose,
+export const StudyRoomPanel: React.FC<StudyRoomPanelProps> = ({
   timerState,
   activeTask,
   todayFocusMs,
@@ -49,6 +52,8 @@ export const StudyRoomModal: React.FC<StudyRoomModalProps> = ({
   currentRoomCode,
   onJoinedRoom,
   onLeftRoom,
+  embedded = false,
+  onClose,
 }) => {
   // Lobby state
   const [lobbyTab, setLobbyTab] = useState<'join' | 'create'>('join');
@@ -107,8 +112,6 @@ export const StudyRoomModal: React.FC<StudyRoomModalProps> = ({
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }
   }, [messages, activeTab]);
-
-  if (!isOpen) return null;
 
   // Handle Create Room
   const handleCreate = async (e: React.FormEvent) => {
@@ -219,57 +222,56 @@ export const StudyRoomModal: React.FC<StudyRoomModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-fadeIn"
-      onClick={e => {
-        if (e.target === e.currentTarget) onClose();
-      }}
+      className={
+        embedded
+          ? 'w-full bg-[#101018] border border-white/10 rounded-2xl flex flex-col overflow-hidden text-white'
+          : 'w-full max-w-xl bg-[#14151c]/95 border border-white/10 rounded-2xl shadow-2xl flex flex-col overflow-hidden text-white animate-scaleUp'
+      }
+      style={embedded ? undefined : { maxHeight: '90vh' }}
+      onClick={e => e.stopPropagation()}
     >
-      <div
-        className="w-full max-w-xl bg-[#14151c]/95 border border-white/10 rounded-2xl shadow-2xl flex flex-col overflow-hidden text-white animate-scaleUp"
-        style={{ maxHeight: '90vh' }}
-        onClick={e => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-white/10 bg-white/[0.02]">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-[var(--accent)]/30 to-[var(--accent)]/10 border border-[var(--accent)]/40 flex items-center justify-center shrink-0">
-              <Icon name="users" className="w-5 h-5 text-[var(--accent)]" />
-            </div>
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <h2 className="text-base font-bold text-white truncate">
-                  {room ? room.name : 'Focus with Friends'}
-                </h2>
-                <span className="px-1.5 py-0.5 rounded text-[9px] font-extrabold tracking-wider bg-amber-500/20 text-amber-300 border border-amber-500/40 uppercase">
-                  ALPHA
-                </span>
-                {room && (
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                    LIVE
-                  </span>
-                )}
-              </div>
-              <p className="text-xs text-white/50 truncate">
-                {room
-                  ? `${members.length} student${members.length === 1 ? '' : 's'} focusing together • Code: ${room.code}`
-                  : 'Experimental study rooms with synchronized timers & live presence.'}
-              </p>
-            </div>
+      {/* Header */}
+      <div className="flex items-center justify-between px-5 py-4 border-b border-white/10 bg-white/[0.02]">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-[var(--accent)]/30 to-[var(--accent)]/10 border border-[var(--accent)]/40 flex items-center justify-center shrink-0">
+            <Icon name="users" className="w-5 h-5 text-[var(--accent)]" />
           </div>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h2 className="text-base font-bold text-white truncate">
+                {room ? room.name : 'Focus with Friends'}
+              </h2>
+              <span className="px-1.5 py-0.5 rounded text-[9px] font-extrabold tracking-wider bg-amber-500/20 text-amber-300 border border-amber-500/40 uppercase">
+                ALPHA
+              </span>
+              {room && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  LIVE
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-white/50 truncate">
+              {room
+                ? `${members.length} student${members.length === 1 ? '' : 's'} focusing together • Code: ${room.code}`
+                : 'Study rooms with synchronized timers & live presence.'}
+            </p>
+          </div>
+        </div>
 
-          <div className="flex items-center gap-2">
-            {room && (
-              <button
-                type="button"
-                onClick={handleLeave}
-                className="px-2.5 py-1.5 text-xs font-semibold rounded-lg text-rose-400 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 transition-all flex items-center gap-1.5"
-                title="Leave room"
-              >
-                <Icon name="door" className="w-3.5 h-3.5" />
-                <span>Leave</span>
-              </button>
-            )}
+        <div className="flex items-center gap-2">
+          {room && (
+            <button
+              type="button"
+              onClick={handleLeave}
+              className="px-2.5 py-1.5 text-xs font-semibold rounded-lg text-rose-400 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 transition-all flex items-center gap-1.5"
+              title="Leave room"
+            >
+              <Icon name="door" className="w-3.5 h-3.5" />
+              <span>Leave</span>
+            </button>
+          )}
+          {!embedded && onClose && (
             <button
               type="button"
               onClick={onClose}
@@ -278,21 +280,22 @@ export const StudyRoomModal: React.FC<StudyRoomModalProps> = ({
             >
               <Icon name="x" className="w-4 h-4" />
             </button>
-          </div>
+          )}
         </div>
+      </div>
 
-        {/* Alpha State Notice Banner */}
-        <div className="mx-6 mt-4 p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-start gap-2.5 text-xs text-amber-200">
-          <span className="text-amber-400 font-bold shrink-0 text-sm leading-none mt-0.5">⚠️</span>
-          <div className="leading-relaxed">
-            <span className="font-semibold text-amber-300">Very Alpha State:</span> This feature is an early experimental preview with minimal features, unrefined controls, and known sync bugs.
-          </div>
+      {/* Alpha State Notice Banner */}
+      <div className="mx-4 sm:mx-5 mt-4 p-3 rounded-xl bg-amber-500/10 border border-amber-500/25 flex items-start gap-2.5 text-xs text-amber-200">
+        <span className="text-amber-400 font-bold shrink-0 text-sm leading-none mt-0.5">⚠️</span>
+        <div className="leading-relaxed">
+          <span className="font-semibold text-amber-300">Alpha Preview:</span> Real-time study rooms with synchronized timers & live chat.
         </div>
+      </div>
 
-        {/* Content Body */}
+      {/* Content Body */}
         {!room ? (
           /* ================= LOBBY (JOIN OR CREATE) ================= */
-          <div className="p-6 flex flex-col gap-6 overflow-y-auto">
+          <div className="p-4 sm:p-6 flex flex-col gap-5 overflow-y-auto">
             {/* Tab switch */}
             <div className="flex p-1 bg-white/5 rounded-xl border border-white/10">
               <button
@@ -300,7 +303,7 @@ export const StudyRoomModal: React.FC<StudyRoomModalProps> = ({
                 onClick={() => setLobbyTab('join')}
                 className={`flex-1 py-2 text-xs font-semibold rounded-lg transition-all ${
                   lobbyTab === 'join'
-                    ? 'bg-[var(--accent)] text-white shadow-lg'
+                    ? 'bg-[var(--accent)] text-[var(--accent-contrast)] shadow-lg'
                     : 'text-white/60 hover:text-white'
                 }`}
               >
@@ -311,7 +314,7 @@ export const StudyRoomModal: React.FC<StudyRoomModalProps> = ({
                 onClick={() => setLobbyTab('create')}
                 className={`flex-1 py-2 text-xs font-semibold rounded-lg transition-all ${
                   lobbyTab === 'create'
-                    ? 'bg-[var(--accent)] text-white shadow-lg'
+                    ? 'bg-[var(--accent)] text-[var(--accent-contrast)] shadow-lg'
                     : 'text-white/60 hover:text-white'
                 }`}
               >
@@ -345,7 +348,7 @@ export const StudyRoomModal: React.FC<StudyRoomModalProps> = ({
                 <button
                   type="submit"
                   disabled={!joinCodeInput.trim() || isSubmitting}
-                  className="w-full py-3 mt-2 font-semibold text-sm rounded-xl bg-[var(--accent)] hover:brightness-110 active:scale-[0.99] text-white shadow-lg shadow-[var(--accent)]/20 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
+                  className="w-full py-3 mt-2 font-semibold text-sm rounded-xl bg-[var(--accent)] hover:brightness-110 active:scale-[0.99] text-[var(--accent-contrast)] shadow-lg shadow-[var(--accent)]/20 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
                 >
                   {isSubmitting ? (
                     <span className="inline-block w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
@@ -395,7 +398,7 @@ export const StudyRoomModal: React.FC<StudyRoomModalProps> = ({
 
                 <div className="flex flex-col gap-2">
                   <label className="text-xs font-semibold text-white/80">Timer Sync Mode</label>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     <button
                       type="button"
                       onClick={() => setNewTimerMode('synced')}
@@ -437,7 +440,7 @@ export const StudyRoomModal: React.FC<StudyRoomModalProps> = ({
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="w-full py-3 mt-2 font-semibold text-sm rounded-xl bg-[var(--accent)] hover:brightness-110 active:scale-[0.99] text-white shadow-lg shadow-[var(--accent)]/20 disabled:opacity-50 transition-all flex items-center justify-center gap-2"
+                  className="w-full py-3 mt-2 font-semibold text-sm rounded-xl bg-[var(--accent)] hover:brightness-110 active:scale-[0.99] text-[var(--accent-contrast)] shadow-lg shadow-[var(--accent)]/20 disabled:opacity-50 transition-all flex items-center justify-center gap-2"
                 >
                   {isSubmitting ? (
                     <span className="inline-block w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
@@ -700,7 +703,20 @@ export const StudyRoomModal: React.FC<StudyRoomModalProps> = ({
             )}
           </div>
         )}
-      </div>
+    </div>
+  );
+};
+
+export const StudyRoomModal: React.FC<StudyRoomModalProps> = ({ isOpen, onClose, ...rest }) => {
+  if (!isOpen) return null;
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-fadeIn"
+      onClick={e => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <StudyRoomPanel {...rest} onClose={onClose} />
     </div>
   );
 };

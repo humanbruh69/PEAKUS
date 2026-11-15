@@ -84,6 +84,7 @@ export interface QuotesSettings {
   rotation: QuoteRotation;
   custom: string;
   useCustom: boolean;
+  toxicMotivation?: boolean;
 }
 
 export interface AppearanceSettings {

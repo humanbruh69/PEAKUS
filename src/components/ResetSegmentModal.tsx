@@ -1,5 +1,5 @@
-import React from 'react';
-import { Icon } from './Icons';
+import React, { useEffect } from 'react';
+import type { LanguageCode } from '../lib/i18n';
 
 interface ResetSegmentModalProps {
   isOpen: boolean;
@@ -8,21 +8,68 @@ interface ResetSegmentModalProps {
   onResetAll: () => void;
   currentCycle: number;
   totalCycles: number;
-  lang?: string;
+  lang?: LanguageCode | string;
 }
+
+const COPY: Record<
+  LanguageCode,
+  {
+    title: string;
+    subtitle: string;
+    resetPart: string;
+    resetWhole: string;
+    footnote: string;
+    closeLabel: string;
+  }
+> = {
+  en: {
+    title: 'Reset Timer',
+    subtitle: 'Start over just this part, or the whole session?',
+    resetPart: 'Reset this part',
+    resetWhole: 'Reset whole session',
+    footnote: 'Your focus time is saved, even when you reset.',
+    closeLabel: 'Close reset dialog',
+  },
+  ta: {
+    title: 'நேரத்தை மீட்டமை',
+    subtitle: 'இந்த பகுதியை மட்டும் தொடங்கவா, அல்லது முழு அமர்வையுமா?',
+    resetPart: 'இந்த பகுதியை மீட்டமை',
+    resetWhole: 'முழு அமர்வை மீட்டமை',
+    footnote: 'மீட்டமைத்தாலும் உங்கள் கவன நேரம் சேமிக்கப்படும்.',
+    closeLabel: 'மூடு',
+  },
+  es: {
+    title: 'Reiniciar temporizador',
+    subtitle: '¿Reiniciar solo esta parte o toda la sesión?',
+    resetPart: 'Reiniciar esta parte',
+    resetWhole: 'Reiniciar toda la sesión',
+    footnote: 'Tu tiempo de foco se guarda, incluso al reiniciar.',
+    closeLabel: 'Cerrar',
+  },
+};
 
 export const ResetSegmentModal: React.FC<ResetSegmentModalProps> = ({
   isOpen,
   onClose,
   onResetCurrent,
   onResetAll,
-  currentCycle,
-  totalCycles,
   lang = 'en',
 }) => {
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
 
-  const currentSegmentNum = Math.min(totalCycles, (currentCycle % totalCycles) + 1);
+  const c = COPY[(lang as LanguageCode)] || COPY.en;
 
   return (
     <div
@@ -36,148 +83,175 @@ export const ResetSegmentModal: React.FC<ResetSegmentModalProps> = ({
       style={{
         position: 'fixed',
         inset: 0,
-        backgroundColor: 'rgba(0, 0, 0, 0.75)',
-        backdropFilter: 'blur(8px)',
+        backgroundColor: 'rgba(6, 8, 16, 0.56)',
+        backdropFilter: 'blur(16px)',
+        WebkitBackdropFilter: 'blur(16px)',
         display: 'grid',
         placeItems: 'center',
         zIndex: 9999,
         padding: '16px',
-        animation: 'fadeIn 0.2s ease-out',
+        animation: 'fade 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
       }}
     >
       <div
-        className="modal-card"
         style={{
           width: '100%',
-          maxWidth: '440px',
-          backgroundColor: '#16161e',
-          border: '1px solid var(--accent-border, rgba(255, 255, 255, 0.12))',
-          borderRadius: '16px',
-          boxShadow: '0 24px 48px -12px rgba(0, 0, 0, 0.7)',
-          padding: '24px',
+          maxWidth: '400px',
+          backgroundColor: 'rgba(20, 23, 36, 0.86)',
+          backdropFilter: 'blur(24px) saturate(1.2)',
+          WebkitBackdropFilter: 'blur(24px) saturate(1.2)',
+          border: '1px solid rgba(255, 255, 255, 0.12)',
+          borderRadius: '20px',
+          boxShadow: '0 24px 60px rgba(0, 0, 0, 0.55)',
+          padding: '28px 24px 22px',
           color: '#ffffff',
           position: 'relative',
+          textAlign: 'center',
+          animation: 'popIn 0.22s cubic-bezier(0.16, 1, 0.3, 1)',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '16px' }}>
-          <div
-            style={{
-              width: '44px',
-              height: '44px',
-              borderRadius: '12px',
-              backgroundColor: 'rgba(239, 68, 68, 0.15)',
-              border: '1px solid rgba(239, 68, 68, 0.3)',
-              display: 'grid',
-              placeItems: 'center',
-              color: '#ef4444',
-              flexShrink: 0,
-            }}
+        {/* Top-left subtle close icon matching reference */}
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label={c.closeLabel}
+          style={{
+            position: 'absolute',
+            top: '14px',
+            left: '14px',
+            width: '32px',
+            height: '32px',
+            borderRadius: '8px',
+            display: 'grid',
+            placeItems: 'center',
+            color: 'rgba(255, 255, 255, 0.6)',
+            cursor: 'pointer',
+            transition: 'background 0.15s ease, color 0.15s ease',
+          }}
+          onMouseEnter={e => {
+            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)';
+            e.currentTarget.style.color = '#ffffff';
+          }}
+          onMouseLeave={e => {
+            e.currentTarget.style.background = 'transparent';
+            e.currentTarget.style.color = 'rgba(255, 255, 255, 0.6)';
+          }}
+        >
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
           >
-            <Icon name="timer" style={{ width: '22px', height: '22px' }} />
-          </div>
-          <div>
-            <h2 id="resetSegTitle" style={{ margin: 0, fontSize: '18px', fontWeight: 650 }}>
-              {lang === 'ta' ? 'சுற்றை மீட்டமைக்க வேண்டுமா?' : lang === 'es' ? '¿Reiniciar segmentos de enfoque?' : 'Reset Focus Segments?'}
-            </h2>
-            <p style={{ margin: '3px 0 0', fontSize: '13px', color: 'rgba(255, 255, 255, 0.65)' }}>
-              {lang === 'ta'
-                ? `தற்போதைய சுற்று: ${currentSegmentNum}/${totalCycles}`
-                : lang === 'es'
-                ? `Progreso actual: ${currentSegmentNum}/${totalCycles}`
-                : `Current progress: ${currentSegmentNum} of ${totalCycles} segments`}
-            </p>
-          </div>
-        </div>
+            <path d="M6 6l12 12M18 6 6 18" />
+          </svg>
+        </button>
+
+        <h2
+          id="resetSegTitle"
+          style={{
+            margin: '4px 0 8px',
+            fontSize: '20px',
+            fontWeight: 700,
+            letterSpacing: '-0.02em',
+            color: '#ffffff',
+          }}
+        >
+          {c.title}
+        </h2>
 
         <p
           style={{
-            fontSize: '13.5px',
-            lineHeight: 1.55,
-            color: 'rgba(255, 255, 255, 0.8)',
-            margin: '0 0 20px',
-            backgroundColor: 'rgba(255, 255, 255, 0.03)',
-            padding: '12px 14px',
-            borderRadius: '10px',
-            border: '1px solid rgba(255, 255, 255, 0.08)',
+            margin: '0 0 22px',
+            fontSize: '14px',
+            lineHeight: 1.45,
+            color: 'rgba(255, 255, 255, 0.68)',
           }}
         >
-          {lang === 'ta'
-            ? 'இந்த சுற்றை தொடக்கத்திற்கு மீட்டமைக்கலாம் அல்லது அனைத்து 4 சுற்றுகளையும் மீட்டமைக்கலாம்.'
-            : lang === 'es'
-            ? '¿Deseas reiniciar únicamente el temporizador del segmento actual, o reiniciar los 4 segmentos del ciclo completo?'
-            : 'Are you sure you want to reset your cycle progress? You can restart just the current segment or wipe all segments in this cycle back to zero.'}
+          {c.subtitle}
         </p>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+        <div
+          style={{
+            display: 'flex',
+            gap: '10px',
+            justifyContent: 'center',
+            flexWrap: 'wrap',
+          }}
+        >
           <button
             type="button"
-            className="btn"
-            style={{
-              padding: '10px 16px',
-              fontSize: '13.5px',
-              fontWeight: 600,
-              backgroundColor: 'rgba(255, 255, 255, 0.07)',
-              color: '#ffffff',
-              border: '1px solid rgba(255, 255, 255, 0.15)',
-              borderRadius: '10px',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '8px',
-              transition: 'all 0.15s ease',
-            }}
             onClick={() => {
               onResetCurrent();
               onClose();
             }}
+            style={{
+              flex: '1 1 140px',
+              minHeight: '42px',
+              padding: '0 16px',
+              borderRadius: '11px',
+              backgroundColor: '#5b76f7',
+              color: '#ffffff',
+              fontSize: '14px',
+              fontWeight: 600,
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+              transition: 'filter 0.15s ease, transform 0.15s ease',
+            }}
+            onMouseEnter={e => {
+              e.currentTarget.style.filter = 'brightness(1.1)';
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.filter = 'none';
+            }}
           >
-            <Icon name="timer" style={{ width: '16px', height: '16px' }} />
-            {lang === 'ta' ? 'தற்போதைய சுற்றை மட்டும் மீட்டமை' : lang === 'es' ? 'Reiniciar solo segmento actual' : 'Reset Current Segment Only'}
+            {c.resetPart}
           </button>
 
           <button
             type="button"
-            className="btn"
-            style={{
-              padding: '10px 16px',
-              fontSize: '13.5px',
-              fontWeight: 600,
-              backgroundColor: 'rgba(239, 68, 68, 0.18)',
-              color: '#fca5a5',
-              border: '1px solid rgba(239, 68, 68, 0.35)',
-              borderRadius: '10px',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '8px',
-              transition: 'all 0.15s ease',
-            }}
             onClick={() => {
               onResetAll();
               onClose();
             }}
-          >
-            <Icon name="trash" style={{ width: '16px', height: '16px' }} />
-            {lang === 'ta' ? 'அனைத்து சுற்றுகளையும் மீட்டமை (0/4)' : lang === 'es' ? 'Reiniciar todos los segmentos (0/4)' : 'Reset All Segments (0/4)'}
-          </button>
-
-          <button
-            type="button"
-            className="btn ghost"
             style={{
-              padding: '10px 16px',
-              fontSize: '13.5px',
-              color: 'rgba(255, 255, 255, 0.6)',
-              marginTop: '4px',
+              flex: '1 1 155px',
+              minHeight: '42px',
+              padding: '0 16px',
+              borderRadius: '11px',
+              backgroundColor: '#e03e3e',
+              color: '#ffffff',
+              fontSize: '14px',
+              fontWeight: 600,
               cursor: 'pointer',
+              whiteSpace: 'nowrap',
+              transition: 'filter 0.15s ease, transform 0.15s ease',
             }}
-            onClick={onClose}
+            onMouseEnter={e => {
+              e.currentTarget.style.filter = 'brightness(1.1)';
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.filter = 'none';
+            }}
           >
-            {lang === 'ta' ? 'ரத்துசெய்' : lang === 'es' ? 'Cancelar' : 'Cancel'}
+            {c.resetWhole}
           </button>
         </div>
+
+        <p
+          style={{
+            margin: '18px 0 0',
+            fontSize: '12.5px',
+            color: 'rgba(255, 255, 255, 0.5)',
+          }}
+        >
+          {c.footnote}
+        </p>
       </div>
     </div>
   );

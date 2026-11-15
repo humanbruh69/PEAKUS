@@ -1,5 +1,6 @@
-import express, { Request, Response } from 'express';
+import express, { type Request, type Response } from 'express';
 import path from 'path';
+import fs from 'fs';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import { GoogleGenAI } from '@google/genai';
@@ -12,14 +13,23 @@ const __dirname = path.dirname(__filename);
 const app = express();
 app.use(express.json({ limit: '10mb' }));
 
-const ai = new GoogleGenAI({
-  apiKey: process.env.GEMINI_API_KEY,
-  httpOptions: {
-    headers: {
-      'User-Agent': 'aistudio-build',
-    },
-  },
+// Health check endpoint for Cloud Run startup/liveness probes
+app.get('/healthz', (_req: Request, res: Response) => {
+  res.status(200).json({ status: 'ok', uptime: process.uptime() });
 });
+
+function getAiClient(): GoogleGenAI | null {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) return null;
+  return new GoogleGenAI({
+    apiKey,
+    httpOptions: {
+      headers: {
+        'User-Agent': 'aistudio-build',
+      },
+    },
+  });
+}
 
 function extractFriendlyErrorMessage(err: any): string {
   if (!err) return 'An error occurred while contacting Study Bot.';
@@ -36,6 +46,11 @@ function extractFriendlyErrorMessage(err: any): string {
 }
 
 async function callGeminiWithFallback(modelName: string, contents: any[], systemInstruction: string) {
+  const ai = getAiClient();
+  if (!ai) {
+    throw new Error('GEMINI_API_KEY is not configured in server environment.');
+  }
+
   const modelsToTry = Array.from(new Set([modelName, 'gemini-3.8-flash', 'gemini-3.1-flash-lite', 'gemini-flash-latest']));
   let lastError: any = null;
 
@@ -66,6 +81,11 @@ async function callGeminiWithFallback(modelName: string, contents: any[], system
 }
 
 async function streamGeminiWithFallback(modelName: string, contents: any[], systemInstruction: string) {
+  const ai = getAiClient();
+  if (!ai) {
+    throw new Error('GEMINI_API_KEY is not configured in server environment.');
+  }
+
   const modelsToTry = Array.from(new Set([modelName, 'gemini-3.8-flash', 'gemini-3.1-flash-lite', 'gemini-flash-latest']));
   let lastError: any = null;
 
@@ -233,7 +253,18 @@ Core Principles:
 });
 
 async function startServer() {
-  const isProd = process.env.NODE_ENV === 'production';
+  const distPath = path.resolve(__dirname, 'dist');
+  const hasDist = fs.existsSync(path.resolve(distPath, 'index.html'));
+
+  // Cloud Run sets K_SERVICE/K_REVISION for both dev sandbox and prod; check NODE_ENV and npm script first
+  const isExplicitProd = process.env.NODE_ENV === 'production' || process.env.npm_lifecycle_event === 'start';
+  const isExplicitDev =
+    !isExplicitProd &&
+    (process.env.NODE_ENV === 'development' ||
+      process.env.npm_lifecycle_event === 'dev' ||
+      process.argv.includes('--dev'));
+
+  const isProd = isExplicitProd || (!isExplicitDev && hasDist);
   const port = Number(process.env.PORT) || 3000;
 
   if (!isProd) {
@@ -248,15 +279,33 @@ async function startServer() {
     });
     app.use(vite.middlewares);
   } else {
-    app.use(express.static(path.resolve(__dirname, 'dist')));
-    app.get('*', (_req, res) => {
-      res.sendFile(path.resolve(__dirname, 'dist', 'index.html'));
-    });
+    if (hasDist) {
+      app.use(express.static(distPath));
+      app.get('*', (_req: Request, res: Response) => {
+        res.sendFile(path.resolve(distPath, 'index.html'));
+      });
+    } else {
+      console.warn(`[Peakus Server] Production mode active but dist folder not found at ${distPath}.`);
+      app.get('*', (_req: Request, res: Response) => {
+        res.status(503).send('Peakus is initializing. Please ensure "npm run build" has completed.');
+      });
+    }
   }
 
-  app.listen(port, '0.0.0.0', () => {
-    console.log(`Peakus Full-Stack Server running on http://0.0.0.0:${port}`);
+  const server = app.listen(port, '0.0.0.0', () => {
+    console.log(`Peakus Server listening on http://0.0.0.0:${port} [mode: ${isProd ? 'production' : 'development'}]`);
   });
+
+  const shutdown = (signal: string) => {
+    console.log(`Received ${signal}, closing server...`);
+    server.close(() => {
+      console.log('Server terminated cleanly.');
+      process.exit(0);
+    });
+  };
+
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown('SIGINT'));
 }
 
 startServer();

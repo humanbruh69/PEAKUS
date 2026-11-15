@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { computeStats, toLocalDateKey, addLocalDays, getLocalStartOfDay } from './statsEngine';
+import { computeStats, isStreakGoalMet, addLocalDays, getLocalStartOfDay } from './statsEngine';
+import { normalizeHex, getContrastTextColor } from './utils';
 import { Session, Task } from '../types';
 
 test('computeStats correctly handles empty sessions and tasks', () => {
@@ -119,3 +120,43 @@ test('generateHeatmap returns proper grid dimensions and level thresholds', () =
   assert.ok(cells[0].dateStr);
   assert.equal(typeof cells[0].level, 'number');
 });
+
+test('computeStats reports todayGoalMet accurately when daily streak goal is reached', () => {
+  const refDate = new Date('2026-11-12T18:00:00');
+  const todayStart = getLocalStartOfDay(refDate).getTime() + 9 * 3600000;
+
+  const belowGoal = computeStats(
+    [{ id: 's1', kind: 'focus', start: todayStart, end: todayStart + 15 * 60000, ms: 15 * 60000, completed: true }],
+    [],
+    25,
+    refDate
+  );
+  assert.equal(belowGoal.todayGoalMet, false);
+  assert.equal(isStreakGoalMet(belowGoal.todayFocusMs, 25), false);
+
+  const metGoal = computeStats(
+    [
+      { id: 's1', kind: 'focus', start: todayStart, end: todayStart + 15 * 60000, ms: 15 * 60000, completed: true },
+      { id: 's2', kind: 'focus', start: todayStart + 20 * 60000, end: todayStart + 30 * 60000, ms: 10 * 60000, completed: false },
+    ],
+    [],
+    25,
+    refDate
+  );
+  assert.equal(metGoal.todayGoalMet, true);
+  assert.equal(metGoal.currentStreak, 1);
+  assert.equal(isStreakGoalMet(metGoal.todayFocusMs, 25), true);
+});
+
+test('normalizeHex and getContrastTextColor handle 3-digit, 6-digit, and light/dark UI colors', () => {
+  assert.equal(normalizeHex('#F0A'), '#ff00aa');
+  assert.equal(normalizeHex('5e6ad2'), '#5e6ad2');
+  assert.equal(normalizeHex('  #10B981 '), '#10b981');
+  assert.equal(normalizeHex('not-a-hex'), null);
+
+  assert.equal(getContrastTextColor('#5e6ad2'), '#ffffff');
+  assert.equal(getContrastTextColor('#ef4444'), '#ffffff');
+  assert.equal(getContrastTextColor('#fde047'), '#0d0e16');
+  assert.equal(getContrastTextColor('#ffffff'), '#0d0e16');
+});
+

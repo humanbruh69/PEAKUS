@@ -1,194 +1,299 @@
-import React, { useEffect } from 'react';
-import { Icon } from './Icons';
-import { t } from '../lib/i18n';
+import React, { useEffect, useRef, useState } from 'react';
 import type { LanguageCode } from '../lib/i18n';
 
 interface FlowPromptModalProps {
   open: boolean;
   language: LanguageCode;
-  onContinue: () => void;
-  onCancel: () => void;
+  autoBreakSeconds?: number;
+  onContinue: () => void; // Keep Working (+10 min)
+  onCancel: () => void; // Take a Break
 }
+
+const COPY: Record<
+  LanguageCode,
+  {
+    title: string;
+    subtitle: string;
+    takeBreak: string;
+    keepWorking: string;
+    startingIn: (s: number) => string;
+  }
+> = {
+  en: {
+    title: 'Great Focus Session!',
+    subtitle: 'Time for a break. Would you like to rest?',
+    takeBreak: 'Take a Break',
+    keepWorking: 'Keep Working (+10 min)',
+    startingIn: (s: number) => `Starting break in ${s}s`,
+  },
+  ta: {
+    title: 'சிறந்த கவன அமர்வு!',
+    subtitle: 'இடைவேளை நேரம். ஓய்வு எடுக்க விரும்புகிறீர்களா?',
+    takeBreak: 'இடைவேளை எடு',
+    keepWorking: 'தொடர்ந்து செய் (+10 நிமிடம்)',
+    startingIn: (s: number) => `${s} வினாடிகளில் இடைவேளை தொடங்கும்`,
+  },
+  es: {
+    title: '¡Gran sesión de foco!',
+    subtitle: 'Es hora de descansar. ¿Querés tomar una pausa?',
+    takeBreak: 'Tomar un descanso',
+    keepWorking: 'Seguir trabajando (+10 min)',
+    startingIn: (s: number) => `Iniciando descanso en ${s}s`,
+  },
+};
 
 export const FlowPromptModal: React.FC<FlowPromptModalProps> = ({
   open,
   language,
+  autoBreakSeconds = 10,
   onContinue,
   onCancel,
 }) => {
-  useEffect(() => {
-    if (!open) return;
+  const totalMs = autoBreakSeconds * 1000;
+  const [remainingMs, setRemainingMs] = useState(totalMs);
+  const triggeredRef = useRef(false);
+  const onCancelRef = useRef(onCancel);
+  onCancelRef.current = onCancel;
 
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        onContinue();
-      } else if (e.key === 'Escape') {
-        e.preventDefault();
-        onCancel();
+  // Drift-free auto-countdown to start break automatically at 0s
+  useEffect(() => {
+    if (!open) {
+      triggeredRef.current = false;
+      setRemainingMs(totalMs);
+      return;
+    }
+
+    triggeredRef.current = false;
+    const deadline = Date.now() + totalMs;
+    setRemainingMs(totalMs);
+
+    const tick = () => {
+      const rem = Math.max(0, deadline - Date.now());
+      setRemainingMs(rem);
+      if (rem <= 0 && !triggeredRef.current) {
+        triggeredRef.current = true;
+        onCancelRef.current();
       }
     };
 
+    const interval = setInterval(tick, 100);
+    return () => clearInterval(interval);
+  }, [open, totalMs]);
+
+  useEffect(() => {
+    if (!open) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        if (!triggeredRef.current) {
+          triggeredRef.current = true;
+          onCancel();
+        }
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        onContinue();
+      }
+    };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [open, onContinue, onCancel]);
 
   if (!open) return null;
 
-  return (
-    <>
-      {/* Dark backdrop scrim */}
-      <div
-        className="scrim"
-        style={{
-          zIndex: 9998,
-          backdropFilter: 'blur(12px)',
-          backgroundColor: 'rgba(5, 5, 12, 0.78)',
-          animation: 'fadeIn 0.2s ease-out',
-        }}
-        onClick={onCancel}
-      />
+  const c = COPY[language] || COPY.en;
+  const secondsLeft = Math.max(0, Math.ceil(remainingMs / 1000));
+  const progressPct = Math.max(0, Math.min(100, (remainingMs / totalMs) * 100));
 
-      {/* Center Flow Prompt Dialog */}
+  return (
+    <div
+      className="modal-overlay"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="flowPromptTitle"
+      aria-describedby="flowPromptDesc"
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 9998,
+        display: 'grid',
+        placeItems: 'center',
+        padding: '16px',
+        backgroundColor: 'rgba(6, 8, 16, 0.56)',
+        backdropFilter: 'blur(16px)',
+        WebkitBackdropFilter: 'blur(16px)',
+        animation: 'fade 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
+      }}
+    >
       <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="flowPromptTitle"
-        aria-describedby="flowPromptDesc"
         style={{
-          position: 'fixed',
-          top: '50%',
-          left: '50%',
-          transform: 'translate(-50%, -50%)',
-          zIndex: 9999,
-          width: '92%',
-          maxWidth: '460px',
-          background: 'linear-gradient(145deg, #181928 0%, #10111a 100%)',
-          border: '1.5px solid var(--accent-border)',
-          boxShadow: '0 25px 65px -15px rgba(0, 0, 0, 0.85), var(--accent-glow)',
-          borderRadius: '24px',
-          padding: '30px 26px',
-          color: '#f4f4f7',
+          width: '100%',
+          maxWidth: '376px',
+          background: 'rgba(20, 23, 36, 0.84)',
+          backdropFilter: 'blur(24px) saturate(1.2)',
+          WebkitBackdropFilter: 'blur(24px) saturate(1.2)',
+          border: '1px solid rgba(255, 255, 255, 0.12)',
+          borderRadius: '22px',
+          boxShadow: '0 24px 60px rgba(0, 0, 0, 0.55)',
+          padding: '28px 24px 24px',
+          color: '#ffffff',
           textAlign: 'center',
-          boxSizing: 'border-box',
-          animation: 'scaleIn 0.22s cubic-bezier(0.16, 1, 0.3, 1)',
+          animation: 'popIn 0.22s cubic-bezier(0.16, 1, 0.3, 1)',
         }}
       >
-        {/* Glowing Flow Wave Badge */}
+        {/* Clean circular checkmark */}
         <div
           style={{
-            width: '68px',
-            height: '68px',
+            width: '48px',
+            height: '48px',
             margin: '0 auto 16px',
-            borderRadius: '20px',
-            background: 'linear-gradient(135deg, var(--accent-soft) 0%, rgba(255, 255, 255, 0.05) 100%)',
-            border: '1.5px solid var(--accent-border)',
-            boxShadow: '0 8px 24px var(--accent-glow)',
+            borderRadius: '50%',
+            background: 'rgba(255, 255, 255, 0.1)',
             display: 'grid',
             placeItems: 'center',
-            color: 'var(--accent-text)',
-            fontSize: '32px',
+            color: 'rgba(255, 255, 255, 0.92)',
           }}
         >
-          <span style={{ width: '34px', height: '34px', display: 'grid', placeItems: 'center' }}>
-            <Icon name="flow" />
-          </span>
+          <svg
+            width="22"
+            height="22"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <circle cx="12" cy="12" r="9" />
+            <path d="m9 12 2 2 4-4" />
+          </svg>
         </div>
 
-        {/* Title */}
         <h2
           id="flowPromptTitle"
           style={{
-            fontSize: '23px',
-            fontWeight: 800,
-            lineHeight: 1.3,
-            margin: '0 0 10px',
-            color: '#ffffff',
+            fontSize: '21px',
+            fontWeight: 700,
+            lineHeight: 1.25,
+            margin: '0 0 8px',
             letterSpacing: '-0.02em',
+            color: '#ffffff',
           }}
         >
-          {t('continueFlowTitle', language)}
+          {c.title}
         </h2>
 
-        {/* Description */}
         <p
           id="flowPromptDesc"
           style={{
-            fontSize: '14.5px',
-            lineHeight: 1.55,
-            color: 'rgba(255, 255, 255, 0.75)',
-            margin: '0 0 24px',
+            fontSize: '14px',
+            lineHeight: 1.5,
+            color: 'rgba(255, 255, 255, 0.68)',
+            margin: '0 0 22px',
           }}
         >
-          {t('continueFlowDesc', language)}
+          {c.subtitle}
         </p>
 
-        {/* Buttons */}
-        <div
-          style={{
-            display: 'flex',
-            gap: '12px',
-            justifyContent: 'center',
-            alignItems: 'center',
-          }}
-        >
-          {/* Cancel / Start Break */}
-          <button
-            type="button"
-            onClick={onCancel}
-            style={{
-              flex: 1,
-              padding: '12px 18px',
-              borderRadius: '12px',
-              border: '1px solid rgba(255, 255, 255, 0.18)',
-              background: 'rgba(255, 255, 255, 0.08)',
-              color: 'rgba(255, 255, 255, 0.85)',
-              fontSize: '14px',
-              fontWeight: 600,
-              cursor: 'pointer',
-              transition: 'all 0.15s ease',
-            }}
-            onMouseEnter={e => {
-              e.currentTarget.style.background = 'rgba(255, 255, 255, 0.14)';
-            }}
-            onMouseLeave={e => {
-              e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)';
-            }}
-          >
-            {t('continueFlowNo', language)}
-          </button>
-
-          {/* Continue Flow (+10 min) */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
           <button
             type="button"
             autoFocus
-            onClick={onContinue}
+            onClick={() => {
+              if (!triggeredRef.current) {
+                triggeredRef.current = true;
+                onCancel();
+              }
+            }}
             style={{
-              flex: 1.3,
-              padding: '12px 20px',
+              width: '100%',
+              height: '46px',
               borderRadius: '12px',
-              border: 'none',
-              background: 'linear-gradient(135deg, var(--accent) 0%, color-mix(in srgb, var(--accent) 70%, #ffffff) 100%)',
+              border: '1px solid rgba(255, 255, 255, 0.14)',
+              background: 'rgba(255, 255, 255, 0.22)',
               color: '#ffffff',
               fontSize: '14.5px',
-              fontWeight: 700,
+              fontWeight: 600,
               cursor: 'pointer',
-              boxShadow: '0 4px 16px var(--accent-glow)',
-              transition: 'transform 0.15s, box-shadow 0.15s',
+              outline: 'none',
+              transition: 'background 0.16s ease, transform 0.16s ease',
             }}
             onMouseEnter={e => {
-              e.currentTarget.style.transform = 'translateY(-1px)';
-              e.currentTarget.style.boxShadow = '0 6px 22px var(--accent-glow)';
+              e.currentTarget.style.background = 'rgba(255, 255, 255, 0.3)';
             }}
             onMouseLeave={e => {
-              e.currentTarget.style.transform = 'translateY(0)';
-              e.currentTarget.style.boxShadow = '0 4px 16px var(--accent-glow)';
+              e.currentTarget.style.background = 'rgba(255, 255, 255, 0.22)';
             }}
           >
-            {t('continueFlowYes', language)}
+            {c.takeBreak}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              triggeredRef.current = true;
+              onContinue();
+            }}
+            style={{
+              width: '100%',
+              height: '46px',
+              borderRadius: '12px',
+              border: '1px solid rgba(255, 255, 255, 0.1)',
+              background: 'rgba(12, 14, 24, 0.45)',
+              color: 'rgba(255, 255, 255, 0.9)',
+              fontSize: '14.5px',
+              fontWeight: 550,
+              cursor: 'pointer',
+              outline: 'none',
+              transition: 'background 0.16s ease, border-color 0.16s ease',
+            }}
+            onMouseEnter={e => {
+              e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)';
+              e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.2)';
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.background = 'rgba(12, 14, 24, 0.45)';
+              e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.1)';
+            }}
+          >
+            {c.keepWorking}
           </button>
         </div>
+
+        {/* Auto-countdown bar */}
+        <div style={{ marginTop: '20px' }}>
+          <div
+            style={{
+              fontSize: '12.5px',
+              fontWeight: 500,
+              color: 'rgba(255, 255, 255, 0.56)',
+              marginBottom: '8px',
+              fontVariantNumeric: 'tabular-nums',
+            }}
+          >
+            {c.startingIn(secondsLeft)}
+          </div>
+          <div
+            style={{
+              width: '100%',
+              height: '3px',
+              borderRadius: '99px',
+              background: 'rgba(255, 255, 255, 0.12)',
+              overflow: 'hidden',
+            }}
+          >
+            <div
+              style={{
+                width: `${progressPct}%`,
+                height: '100%',
+                borderRadius: 'inherit',
+                background: 'rgba(255, 255, 255, 0.45)',
+                transition: 'width 0.1s linear',
+              }}
+            />
+          </div>
+        </div>
       </div>
-    </>
+    </div>
   );
 };

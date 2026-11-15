@@ -3,12 +3,13 @@ import { Icon } from './Icons';
 import type { Settings, ModeKey, Task, Session, LanguageCode, TimerState } from '../types';
 import { SCENES, SOLIDS, CATEGORIES, renderScene } from '../lib/scenes';
 import { DEFAULTS } from '../lib/constants';
-import { fmtDur, fmtClock, dayKey, startOfDay, addDays, uid, clone } from '../lib/utils';
+import { fmtDur, fmtClock, dayKey, startOfDay, addDays, uid, clone, normalizeHex } from '../lib/utils';
 import { imageDB, type CustomImage } from '../lib/imageDB';
 import { audioX } from '../lib/audio';
 import { sync } from '../lib/sync';
 import { Store } from '../lib/store';
-import { t, MULTILINGUAL_QUOTES } from '../lib/i18n';
+import { t } from '../lib/i18n';
+import { getActiveQuoteList } from '../lib/toxicQuotes';
 import {
   YOUTUBE_BG_PRESETS,
   YOUTUBE_MUSIC_PRESETS,
@@ -24,6 +25,8 @@ import { FocusAnalyticsGraph } from './FocusAnalyticsGraph';
 import { type PomodoroPreset, saveCustomPreset, applyPresetToSettings } from '../lib/presets';
 import { PeakusMountainLogo } from './PeakusMountainLogo';
 import { CloudAccountSection } from './CloudAccountSection';
+import { StudyRoomPanel } from './StudyRoomModal';
+import { auth } from '../lib/firebase';
 import { computeStats } from '../lib/statsEngine';
 import {
   TALLY_THEMES,
@@ -55,9 +58,25 @@ interface SettingsModalProps {
   onSavePreset?: (preset: PomodoroPreset) => void;
   onSelectPreset?: (preset: PomodoroPreset) => void;
   timerState?: TimerState;
+  requestedSection?: SectionKey | null;
+  activeTask?: Task;
+  currentRoomCode?: string | null;
+  onJoinedRoom?: (code: string) => void;
+  onLeftRoom?: () => void;
 }
 
-type SectionKey = 'themes' | 'clock' | 'timer' | 'stats' | 'quotes' | 'language' | 'music' | 'cloud' | 'extras';
+export type SettingsSectionKey =
+  | 'themes'
+  | 'clock'
+  | 'timer'
+  | 'stats'
+  | 'quotes'
+  | 'music'
+  | 'language'
+  | 'rooms'
+  | 'cloud'
+  | 'extras';
+type SectionKey = SettingsSectionKey;
 
 const thumbsCache = new Map<string, string>();
 function getThumbURL(id: string): string {
@@ -85,8 +104,18 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onSavePreset,
   onSelectPreset,
   timerState,
+  requestedSection,
+  activeTask,
+  currentRoomCode = null,
+  onJoinedRoom,
+  onLeftRoom,
 }) => {
   const [section, setSection] = useState<SectionKey>('themes');
+  useEffect(() => {
+    if (open && requestedSection) {
+      setSection(requestedSection);
+    }
+  }, [open, requestedSection]);
   const [editMode, setEditMode] = useState<ModeKey>(settings.mode);
   const [themeTab, setThemeTab] = useState<'scenes' | 'video' | 'uploads' | 'atmosphere'>('scenes');
   const [libCat, setLibCat] = useState<string>('all');
@@ -152,18 +181,51 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [genSyncKey, setGenSyncKey] = useState('');
   const [, setSyncTick] = useState(0);
 
+  // Custom color hex draft states (supports live picker + manual hex typing)
+  const [accentHexInput, setAccentHexInput] = useState(settings.appearance.accent || '#5e6ad2');
+  const [clockHexInput, setClockHexInput] = useState(settings.clock.color || '#ffffff');
+  const currentModeBg = settings.modes[editMode as keyof typeof settings.modes]?.bg;
+  const currentSolidHex = currentModeBg?.kind === 'color' ? currentModeBg.color : '#1e1b4b';
+  const [solidHexInput, setSolidHexInput] = useState(currentSolidHex);
+
+  useEffect(() => {
+    setAccentHexInput(settings.appearance.accent || '#5e6ad2');
+  }, [settings.appearance.accent]);
+
+  useEffect(() => {
+    setClockHexInput(settings.clock.color || '#ffffff');
+  }, [settings.clock.color]);
+
+  useEffect(() => {
+    setSolidHexInput(currentSolidHex);
+  }, [currentSolidHex]);
+
   const lang = settings.language || 'en';
 
-  const NAV_ITEMS: [SectionKey, string, string][] = [
-    ['themes', t('tabThemes', lang), 'palette'],
-    ['clock', t('tabClock', lang), 'clock'],
-    ['timer', t('tabTimer', lang), 'timer'],
-    ['stats', t('tabStats', lang), 'chart'],
-    ['quotes', t('tabQuotes', lang), 'quote'],
-    ['language', t('tabLanguage', lang), 'globe'],
-    ['music', t('music', lang), 'headphones'],
-    ['cloud', 'Account & Cloud', 'cloud'],
-    ['extras', t('tabExtras', lang), 'sparkles'],
+  const NAV_ITEMS: {
+    key: SectionKey;
+    label: string;
+    icon: string;
+    badge?: string;
+    badgeLive?: boolean;
+    dot?: boolean;
+  }[] = [
+    { key: 'themes', label: t('tabThemes', lang), icon: 'palette' },
+    { key: 'clock', label: t('tabClock', lang), icon: 'clock' },
+    { key: 'timer', label: lang === 'en' ? 'Focus Timer' : t('tabTimer', lang), icon: 'timer' },
+    { key: 'stats', label: t('tabStats', lang), icon: 'chart' },
+    { key: 'quotes', label: t('tabQuotes', lang), icon: 'quote' },
+    { key: 'music', label: t('music', lang), icon: 'headphones' },
+    { key: 'language', label: t('tabLanguage', lang), icon: 'globe' },
+    {
+      key: 'rooms',
+      label: 'Rooms',
+      icon: 'users',
+      badge: currentRoomCode ? 'LIVE' : 'NEW',
+      badgeLive: !!currentRoomCode,
+    },
+    { key: 'cloud', label: 'Account', icon: 'cloud', dot: !!auth.currentUser },
+    { key: 'extras', label: t('tabExtras', lang), icon: 'sparkles' },
   ];
 
   useEffect(() => {
@@ -427,99 +489,54 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       return s.cats.includes(libCat as any);
     });
 
-    const isCurrentActiveMode = settings.mode === editMode;
-
     return (
-      <div className="content-inner" style={{ maxWidth: '780px' }}>
+      <div className="content-inner" style={{ maxWidth: '760px' }}>
         {/* Header */}
-        <div style={{ marginBottom: '20px' }}>
-          <h1 id="setTitle" style={{ fontSize: '28px', fontWeight: 800, letterSpacing: '-0.03em' }}>
+        <div style={{ marginBottom: '18px' }}>
+          <h1 id="setTitle" style={{ fontSize: '30px', fontWeight: 800, letterSpacing: '-0.03em' }}>
             {t('tabThemes', lang)}
           </h1>
-          <p className="sub-t" style={{ fontSize: '13.5px', margin: '4px 0 0', color: 'var(--muted)' }}>
-            {t('themesSubtitle', lang)}
+          <p className="sub-t" style={{ fontSize: '14px', margin: '4px 0 0', color: 'var(--muted)' }}>
+            {lang === 'en' ? 'Pick your theme for each mode.' : t('themesSubtitle', lang)}
           </p>
         </div>
 
-        {/* Mode Selector Strip */}
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: '12px',
-            padding: '6px',
-            background: 'rgba(255, 255, 255, 0.04)',
-            border: '1px solid rgba(255, 255, 255, 0.08)',
-            borderRadius: '14px',
-            marginBottom: '16px',
-          }}
-        >
-          <div style={{ display: 'flex', gap: '4px', flex: 1 }}>
-            {(['focus', 'home', 'ambient'] as ModeKey[]).map(m => {
-              const isSelected = m === editMode;
-              const isDesktopActive = settings.mode === m;
-              const modeLabel =
-                m === 'focus'
-                  ? t('modeFocus', lang)
-                  : m === 'home'
-                  ? t('modeHome', lang)
-                  : t('modeAmbient', lang);
-              const iconName = m === 'focus' ? 'target' : m === 'home' ? 'home' : 'sun';
+        {/* Compact Inline Mode Selector Pill (matching reference Image 1) */}
+        <div className="themes-mode-seg" role="tablist" aria-label="Theme edit mode">
+          {(['home', 'focus', 'ambient'] as ModeKey[]).map(m => {
+            const isSelected = m === editMode;
+            const modeLabel =
+              m === 'focus'
+                ? t('modeFocus', lang)
+                : m === 'home'
+                ? t('modeHome', lang)
+                : t('modeAmbient', lang);
 
-              return (
-                <button
-                  key={m}
-                  type="button"
-                  onClick={() => setEditMode(m)}
-                  style={{
-                    flex: 1,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '8px',
-                    padding: '8px 14px',
-                    borderRadius: '10px',
-                    fontSize: '13px',
-                    fontWeight: 650,
-                    transition: 'all 0.18s ease',
-                    background: isSelected ? 'var(--accent)' : 'transparent',
-                    color: isSelected ? '#ffffff' : 'rgba(255, 255, 255, 0.65)',
-                    border: isSelected ? '1px solid var(--accent)' : '1px solid transparent',
-                    boxShadow: isSelected ? '0 2px 10px var(--accent-glow)' : 'none',
-                    position: 'relative',
-                  }}
-                >
-                  <Icon name={iconName} style={{ width: '15px', height: '15px' }} />
-                  <span>{modeLabel}</span>
-                  {isDesktopActive && (
-                    <span
-                      style={{
-                        width: '6px',
-                        height: '6px',
-                        borderRadius: '50%',
-                        backgroundColor: '#34d399',
-                        boxShadow: '0 0 6px #34d399',
-                        marginLeft: '2px',
-                      }}
-                      title="Currently active on stage"
-                    />
-                  )}
-                </button>
-              );
-            })}
-          </div>
+            return (
+              <button
+                key={m}
+                type="button"
+                role="tab"
+                aria-selected={isSelected}
+                onClick={() => setEditMode(m)}
+                className={isSelected ? 'active' : ''}
+              >
+                {modeLabel}
+              </button>
+            );
+          })}
         </div>
 
-        {/* Cinematic Live Mode Preview Card */}
+        {/* Clean Mode Preview Card (matching reference Image 1) */}
         <div
           className="preview-card"
           aria-label={`${t('preview', lang)}: ${bgDisplayName}`}
           style={{
             position: 'relative',
-            aspectRatio: '21/9',
+            aspectRatio: '16/9',
+            maxHeight: '280px',
             width: '100%',
-            borderRadius: '16px',
+            borderRadius: '14px',
             overflow: 'hidden',
             backgroundImage:
               bg.kind === 'scene' && bg.id
@@ -530,9 +547,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             backgroundColor: bg.kind === 'color' ? bg.color : '#0d0d14',
             backgroundSize: 'cover',
             backgroundPosition: `${currentModeCfg.posX}% ${currentModeCfg.posY}%`,
-            marginBottom: '20px',
-            border: '1px solid rgba(255, 255, 255, 0.12)',
-            boxShadow: '0 8px 30px rgba(0, 0, 0, 0.45)',
+            marginBottom: '18px',
+            border: '1px solid rgba(255, 255, 255, 0.08)',
           }}
         >
           {bg.kind === 'videoUpload' && (
@@ -588,38 +604,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             />
           )}
 
-          {/* Live Top-Left Tag */}
-          <div
-            style={{
-              position: 'absolute',
-              top: '12px',
-              left: '14px',
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '6px',
-              padding: '3px 9px',
-              borderRadius: '6px',
-              backgroundColor: 'rgba(0, 0, 0, 0.6)',
-              backdropFilter: 'blur(8px)',
-              fontSize: '11px',
-              fontWeight: 700,
-              letterSpacing: '0.04em',
-              textTransform: 'uppercase',
-              color: 'rgba(255, 255, 255, 0.9)',
-              border: '1px solid rgba(255, 255, 255, 0.1)',
-            }}
-          >
-            <span
-              style={{
-                width: '6px',
-                height: '6px',
-                borderRadius: '50%',
-                backgroundColor: isCurrentActiveMode ? '#34d399' : 'var(--accent)',
-              }}
-            />
-            {editMode} mode preview
-          </div>
-
           {/* Center Clock Preview */}
           <div
             className="pv-clock"
@@ -630,10 +614,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               placeItems: 'center',
               fontFamily: 'var(--display-font)',
               fontWeight: 800,
-              fontSize: 'clamp(28px, 4.5vw, 48px)',
+              fontSize: 'clamp(32px, 5vw, 52px)',
               color: settings.clock.color || '#ffffff',
               letterSpacing: '-0.03em',
-              textShadow: '0 2px 20px rgba(0, 0, 0, 0.65)',
+              textShadow: '0 2px 18px rgba(0, 0, 0, 0.55)',
               userSelect: 'none',
               pointerEvents: 'none',
             }}
@@ -642,42 +626,29 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               ? `${settings.timer.focus}:00`
               : editMode === 'home'
               ? '12:00'
-              : 'Ambient'}
+              : '1:01'}
           </div>
 
-          {/* Bottom metadata banner */}
+          {/* Clean Bottom-Left Scene Pill */}
           <div
             style={{
               position: 'absolute',
-              bottom: 0,
-              left: 0,
-              right: 0,
-              padding: '8px 14px',
-              background: 'linear-gradient(to top, rgba(0, 0, 0, 0.75) 0%, transparent 100%)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
+              bottom: '12px',
+              left: '12px',
+              maxWidth: 'calc(100% - 24px)',
+              padding: '4px 10px',
+              borderRadius: '7px',
+              backgroundColor: 'rgba(10, 10, 16, 0.74)',
+              border: '1px solid rgba(255, 255, 255, 0.08)',
               fontSize: '12px',
-              fontWeight: 600,
+              fontWeight: 650,
               color: '#ffffff',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
             }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', overflow: 'hidden' }}>
-              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {bgDisplayName}
-              </span>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '11px', color: 'rgba(255, 255, 255, 0.75)' }}>
-              <span>Dim: {currentModeCfg.dim}%</span>
-              <span>•</span>
-              <span>Blur: {currentModeCfg.blur}px</span>
-              {currentModeCfg.keyTone && (
-                <>
-                  <span>•</span>
-                  <span style={{ color: '#34d399', fontWeight: 700 }}>Key Tone ON</span>
-                </>
-              )}
-            </div>
+            {bgDisplayName}
           </div>
         </div>
 
@@ -947,28 +918,64 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   })}
 
                   {/* Custom Solid Color */}
-                  <label
+                  <div
                     style={{
                       display: 'flex',
                       alignItems: 'center',
-                      gap: '10px',
-                      padding: '8px 10px',
+                      gap: '8px',
+                      padding: '6px 10px',
                       borderRadius: '10px',
                       backgroundColor: 'rgba(255, 255, 255, 0.03)',
                       border: '1px dashed rgba(255, 255, 255, 0.18)',
-                      cursor: 'pointer',
                     }}
                   >
                     <input
                       type="color"
-                      value={bg.kind === 'color' ? bg.color : '#1e1b4b'}
-                      onChange={e => updateSettingField(`modes.@.bg`, { kind: 'color', color: e.target.value })}
-                      style={{ width: '24px', height: '24px', border: 'none', background: 'none', cursor: 'pointer', padding: 0 }}
+                      aria-label={isEn ? 'Custom background color picker' : 'Selector de color propio'}
+                      value={normalizeHex(bg.kind === 'color' ? bg.color : '#1e1b4b') || '#1e1b4b'}
+                      onInput={e => {
+                        const val = normalizeHex((e.target as HTMLInputElement).value);
+                        if (val) {
+                          setSolidHexInput(val);
+                          updateSettingField('modes.@.bg', { kind: 'color', color: val });
+                        }
+                      }}
+                      onChange={e => {
+                        const val = normalizeHex(e.target.value);
+                        if (val) {
+                          setSolidHexInput(val);
+                          updateSettingField('modes.@.bg', { kind: 'color', color: val });
+                        }
+                      }}
+                      style={{ width: '26px', height: '26px', borderRadius: '6px', cursor: 'pointer', flexShrink: 0 }}
                     />
-                    <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--muted)' }}>
-                      {isEn ? 'Custom Hex' : 'Color propio'}
-                    </span>
-                  </label>
+                    <input
+                      type="text"
+                      aria-label={isEn ? 'Custom background hex' : 'Hex de fondo'}
+                      value={solidHexInput}
+                      maxLength={7}
+                      spellCheck={false}
+                      onChange={e => {
+                        const raw = e.target.value;
+                        setSolidHexInput(raw);
+                        const val = normalizeHex(raw);
+                        if (val) {
+                          updateSettingField('modes.@.bg', { kind: 'color', color: val });
+                        }
+                      }}
+                      onBlur={() => {
+                        const val = normalizeHex(solidHexInput);
+                        if (val) {
+                          setSolidHexInput(val);
+                          updateSettingField('modes.@.bg', { kind: 'color', color: val });
+                        } else {
+                          setSolidHexInput(bg.kind === 'color' ? bg.color : '#1e1b4b');
+                        }
+                      }}
+                      placeholder="#1e1b4b"
+                      className="hex-text-input"
+                    />
+                  </div>
                 </div>
               </div>
             )}
@@ -1583,7 +1590,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 {t('accentColor', lang)}
               </h3>
               <p style={{ margin: '0 0 16px', fontSize: '13px', color: 'var(--muted)' }}>
-                Synchronized across all timer highlights, button glows, and dashboard accents.
+                Customizes stage controls, active buttons, timer visuals, glows, and dashboard accents.
               </p>
 
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: '10px', marginBottom: '14px' }}>
@@ -1628,11 +1635,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 })}
               </div>
 
-              {/* Custom Hex Picker */}
+              {/* Custom Hex Picker + Editable Hex Field */}
               <div
                 style={{
                   display: 'flex',
                   alignItems: 'center',
+                  justifyContent: 'space-between',
+                  flexWrap: 'wrap',
                   gap: '12px',
                   padding: '10px 14px',
                   borderRadius: '10px',
@@ -1640,19 +1649,61 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   border: '1px solid rgba(255, 255, 255, 0.08)',
                 }}
               >
-                <input
-                  type="color"
-                  value={settings.appearance.accent}
-                  title="Pick custom accent"
-                  onChange={e => updateSettingField('appearance.accent', e.target.value)}
-                  style={{ width: '32px', height: '32px', border: 'none', background: 'none', cursor: 'pointer', padding: 0 }}
-                />
-                <div>
-                  <div style={{ fontSize: '13px', fontWeight: 650, color: '#ffffff' }}>Custom Accent Hex</div>
-                  <div style={{ fontSize: '12px', fontFamily: 'monospace', color: 'var(--accent-text)' }}>
-                    {settings.appearance.accent}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <input
+                    type="color"
+                    aria-label="Custom UI accent color picker"
+                    value={normalizeHex(settings.appearance.accent) || '#5e6ad2'}
+                    title="Pick custom UI accent color"
+                    onInput={e => {
+                      const val = normalizeHex((e.target as HTMLInputElement).value);
+                      if (val) {
+                        setAccentHexInput(val);
+                        updateSettingField('appearance.accent', val);
+                      }
+                    }}
+                    onChange={e => {
+                      const val = normalizeHex(e.target.value);
+                      if (val) {
+                        setAccentHexInput(val);
+                        updateSettingField('appearance.accent', val);
+                      }
+                    }}
+                  />
+                  <div>
+                    <div style={{ fontSize: '13px', fontWeight: 650, color: '#ffffff' }}>Custom UI Color</div>
+                    <div style={{ fontSize: '12px', color: 'var(--muted)' }}>
+                      Pick or enter any hex code (e.g. #ff5a5f)
+                    </div>
                   </div>
                 </div>
+                <input
+                  type="text"
+                  id="customAccentHexInput"
+                  aria-label="Custom UI accent hex"
+                  value={accentHexInput}
+                  maxLength={7}
+                  spellCheck={false}
+                  placeholder="#5e6ad2"
+                  className="hex-text-input hex-text-input-lg"
+                  onChange={e => {
+                    const raw = e.target.value;
+                    setAccentHexInput(raw);
+                    const val = normalizeHex(raw);
+                    if (val) {
+                      updateSettingField('appearance.accent', val);
+                    }
+                  }}
+                  onBlur={() => {
+                    const val = normalizeHex(accentHexInput);
+                    if (val) {
+                      setAccentHexInput(val);
+                      updateSettingField('appearance.accent', val);
+                    } else {
+                      setAccentHexInput(settings.appearance.accent);
+                    }
+                  }}
+                />
               </div>
             </div>
 
@@ -2044,16 +2095,59 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               {['#ffffff', '#fff4e0', '#e9ddff', '#d6f5e8', '#ffd9e6', '#cfe8ff'].map(col => (
                 <button
                   key={col}
+                  type="button"
                   className="swatch"
                   style={{ background: col }}
-                  aria-pressed={c.color === col}
+                  aria-label={`Clock color ${col}`}
+                  aria-pressed={c.color.toLowerCase() === col.toLowerCase()}
                   onClick={() => updateSettingField('clock.color', col)}
                 />
               ))}
               <input
                 type="color"
-                value={c.color}
-                onChange={e => updateSettingField('clock.color', e.target.value)}
+                aria-label="Custom clock color picker"
+                value={normalizeHex(c.color) || '#ffffff'}
+                onInput={e => {
+                  const val = normalizeHex((e.target as HTMLInputElement).value);
+                  if (val) {
+                    setClockHexInput(val);
+                    updateSettingField('clock.color', val);
+                  }
+                }}
+                onChange={e => {
+                  const val = normalizeHex(e.target.value);
+                  if (val) {
+                    setClockHexInput(val);
+                    updateSettingField('clock.color', val);
+                  }
+                }}
+              />
+              <input
+                type="text"
+                id="customClockHexInput"
+                aria-label="Custom clock hex"
+                value={clockHexInput}
+                maxLength={7}
+                spellCheck={false}
+                placeholder="#ffffff"
+                className="hex-text-input"
+                onChange={e => {
+                  const raw = e.target.value;
+                  setClockHexInput(raw);
+                  const val = normalizeHex(raw);
+                  if (val) {
+                    updateSettingField('clock.color', val);
+                  }
+                }}
+                onBlur={() => {
+                  const val = normalizeHex(clockHexInput);
+                  if (val) {
+                    setClockHexInput(val);
+                    updateSettingField('clock.color', val);
+                  } else {
+                    setClockHexInput(c.color);
+                  }
+                }}
               />
             </div>
           </div>
@@ -2947,9 +3041,36 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
   /* ----- Stats Tab Render ----- */
   const renderStats = () => {
-    const stats = computeStats(sessions, tasks, settings.timer.streakGoal);
+    const STAT_PERIODS = [
+      { id: 'today', label: 'Today' },
+      { id: 'week', label: 'Week' },
+      { id: 'month', label: 'Month' },
+      { id: '3m', label: '3 Months' },
+      { id: '6m', label: '6 Months' },
+      { id: '1y', label: '1 Year' },
+      { id: 'all', label: 'All Time' },
+    ];
+
+    const getPeriodCutoff = (period: string): number => {
+      const todayStart = startOfDay(Date.now());
+      if (period === 'today') return todayStart;
+      if (period === 'week') return addDays(todayStart, -6);
+      if (period === 'month') return addDays(todayStart, -29);
+      if (period === '3m') return addDays(todayStart, -89);
+      if (period === '6m') return addDays(todayStart, -179);
+      if (period === '1y') return addDays(todayStart, -364);
+      return 0;
+    };
+
+    const cutoffMs = getPeriodCutoff(statPeriod);
+    const filteredSessions =
+      cutoffMs > 0 ? sessions.filter(s => s.start >= cutoffMs) : sessions;
+
+    const allStats = computeStats(sessions, tasks, settings.timer.streakGoal);
+    const periodStats = computeStats(filteredSessions, tasks, settings.timer.streakGoal);
+
     const weeks = heatSpan === '6m' ? 26 : 53;
-    const heatCells = stats.generateHeatmap(weeks).map(cell => (
+    const heatCells = allStats.generateHeatmap(weeks).map(cell => (
       <i
         key={cell.dateStr}
         className={cell.isFuture ? 'future' : (cell.level ? `l${cell.level}` : '')}
@@ -2964,10 +3085,32 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       sync.touch();
     };
 
+    const activePeriodLabel =
+      STAT_PERIODS.find(p => p.id === statPeriod)?.label || 'All Time';
+
     return (
-      <div className="content-inner">
-        <h1 id="setTitle">{t('tabStats', lang)}</h1>
-        <p className="sub-t">{t('statsSubtitle', lang)}</p>
+      <div className="content-inner" style={{ maxWidth: '760px' }}>
+        <h1 id="setTitle">{lang === 'en' ? 'Focus Stats' : t('tabStats', lang)}</h1>
+        <p className="sub-t">
+          {lang === 'en'
+            ? 'Refine your workflow with insights into your productivity patterns.'
+            : t('statsSubtitle', lang)}
+        </p>
+
+        {/* Period Filter Pills (matching reference Image 2) */}
+        <div className="stats-periods" role="group" aria-label="Stats time period">
+          {STAT_PERIODS.map(p => (
+            <button
+              key={p.id}
+              type="button"
+              className={`period-chip ${statPeriod === p.id ? 'active' : ''}`}
+              aria-pressed={statPeriod === p.id}
+              onClick={() => setStatPeriod(p.id)}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
 
         <div className="stat-cards">
           <div className="stat c1">
@@ -2975,10 +3118,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               {t('currentStreak', lang)} <Icon name="flameO" />
             </div>
             <div className="s-val">
-              {stats.currentStreak} {stats.currentStreak === 1 ? t('streakDaySingle', lang) : t('streakDays', lang)}
+              {allStats.currentStreak}{' '}
+              {allStats.currentStreak === 1 ? t('streakDaySingle', lang) : t('streakDays', lang)}
             </div>
             <div className="s-foot">
-              {t('bestStreak', lang)}: {stats.bestStreak} • {t('streakGoalNote', lang)} {settings.timer.streakGoal} min/d
+              {t('bestStreak', lang)}: {allStats.bestStreak} • {settings.timer.streakGoal}m/d
             </div>
           </div>
 
@@ -2986,17 +3130,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <div className="s-top">
               {t('focusTime', lang)} <Icon name="bolt" />
             </div>
-            <div className="s-val">{fmtDur(stats.totalFocusMs)}</div>
-            <div className="s-foot">Total verified</div>
+            <div className="s-val">{fmtDur(periodStats.totalFocusMs)}</div>
+            <div className="s-foot">{activePeriodLabel}</div>
           </div>
 
           <div className="stat c3">
             <div className="s-top">
               {t('sessionsStat', lang)} <Icon name="stopwatch" />
             </div>
-            <div className="s-val">{stats.completedFocusSessionsCount}</div>
+            <div className="s-val">{periodStats.completedFocusSessionsCount}</div>
             <div className="s-foot">
-              + {stats.interruptedFocusSessionsCount} interrupted
+              + {periodStats.interruptedFocusSessionsCount} interrupted
             </div>
           </div>
 
@@ -3004,7 +3148,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <div className="s-top">
               {t('tasksCompleted', lang)} <Icon name="listcheck" />
             </div>
-            <div className="s-val">{stats.completedTasksCount}</div>
+            <div className="s-val">{periodStats.completedTasksCount}</div>
             <div className="s-foot">Done in list</div>
           </div>
 
@@ -3012,7 +3156,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <div className="s-top">
               {t('breakTime', lang)} <Icon name="coffee" />
             </div>
-            <div className="s-val">{fmtDur(stats.totalBreakMs)}</div>
+            <div className="s-val">{fmtDur(periodStats.totalBreakMs)}</div>
             <div className="s-foot">Recharge time</div>
           </div>
 
@@ -3021,7 +3165,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               {t('dailyAverage', lang)} <Icon name="gauge" />
             </div>
             <div className="s-val">
-              {fmtDur(stats.dailyAverageFocusMs)}
+              {fmtDur(periodStats.dailyAverageFocusMs)}
             </div>
             <div className="s-foot">Per active day</div>
           </div>
@@ -3080,18 +3224,18 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         <div className="card">
           <h3>{t('byTaskTitle', lang)}</h3>
           <p className="desc">{t('byTaskTitle', lang)}</p>
-          {stats.taskDistribution.length > 0 ? (
+          {periodStats.taskDistribution.length > 0 ? (
             <div className="dist">
-              {stats.taskDistribution.slice(0, 8).map(d => (
+              {periodStats.taskDistribution.slice(0, 8).map(d => (
                 <div key={d.id} className="dist-row">
                   <span className="n">{d.title}</span>
                   <span className="v">
-                    {fmtDur(d.ms)} • {Math.round((d.ms / (stats.totalFocusMs || 1)) * 100 || 0)}%
+                    {fmtDur(d.ms)} • {Math.round((d.ms / (periodStats.totalFocusMs || 1)) * 100 || 0)}%
                   </span>
                   <span className="b">
                     <i
                       style={{
-                        width: `${Math.min(100, Math.round((d.ms / (stats.totalFocusMs || 1)) * 100))}%`,
+                        width: `${Math.min(100, Math.round((d.ms / (periodStats.totalFocusMs || 1)) * 100))}%`,
                       }}
                     />
                   </span>
@@ -3165,11 +3309,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   /* ----- Quotes Tab Render ----- */
   const renderQuotes = () => {
     const q = settings.quotes;
-    const currentQuoteList = MULTILINGUAL_QUOTES[lang] || MULTILINGUAL_QUOTES.en;
+    const isToxic = !!q.toxicMotivation;
+    const currentQuoteList = getActiveQuoteList(lang, isToxic);
     return (
       <div className="content-inner">
         <h1 id="setTitle">{t('tabQuotes', lang)}</h1>
-        <p className="sub-t">Calming wisdom and inspiring quotes in top right corner.</p>
+        <p className="sub-t">
+          {isToxic
+            ? 'Unfiltered Toxic Motivation discipline quotes active in top right corner.'
+            : 'Calming wisdom and inspiring quotes in top right corner.'}
+        </p>
 
         <div className="card">
           <div className="row center-y">
@@ -3226,8 +3375,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         </div>
 
         <div className="card">
-          <h3>Included Quotes ({lang.toUpperCase()})</h3>
-          <p className="desc">{currentQuoteList.length} curated quotes in {lang === 'ta' ? 'Tamil' : lang === 'es' ? 'Spanish' : 'English'}.</p>
+          <h3>
+            {isToxic ? 'Toxic Motivation Quotes' : 'Included Quotes'} (
+            {isToxic && lang === 'es' ? 'EN' : lang.toUpperCase()})
+          </h3>
+          <p className="desc">
+            {currentQuoteList.length} {isToxic ? 'toxic motivation' : 'curated'} quotes in{' '}
+            {lang === 'ta' ? 'Tamil' : !isToxic && lang === 'es' ? 'Spanish' : 'English'}.
+          </p>
           <ul
             style={{
               margin: 0,
@@ -3362,6 +3517,27 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               }
             />
           </div>
+
+          <div className="row center-y">
+            <div className="txt">
+              <b>Toxic Motivation</b>
+              <span>
+                Hardcore, unfiltered discipline quotes (35 quotes in English & Tamil).
+              </span>
+            </div>
+            <button
+              id="toggleToxicMotivation"
+              className="switch"
+              role="switch"
+              aria-label="Toxic Motivation"
+              aria-checked={!!settings.quotes.toxicMotivation}
+              onClick={() => {
+                const nextVal = !settings.quotes.toxicMotivation;
+                updateSettingField('quotes.toxicMotivation', nextVal);
+                onToast(nextVal ? 'Toxic Motivation enabled.' : 'Toxic Motivation disabled.');
+              }}
+            />
+          </div>
         </div>
 
         <div className="card">
@@ -3402,11 +3578,45 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     );
   };
 
+  /* ----- Study Rooms Tab Render ----- */
+  const renderRooms = () => {
+    const stats = computeStats(sessions, tasks, settings.timer.streakGoal);
+    const safeTimerState: TimerState = timerState || {
+      status: 'idle',
+      phase: 'focus',
+      remainingMs: 0,
+      durationMs: 0,
+      cycle: 0,
+      startedAt: null,
+      sessionStartedAt: null,
+      interrupted: false,
+    };
+
+    return (
+      <div className="content-inner" style={{ maxWidth: '760px' }}>
+        <h1 id="setTitle">Rooms</h1>
+        <p className="sub-t">
+          Create or join collaborative study halls with live timers, progress sharing, and focus chat.
+        </p>
+        <StudyRoomPanel
+          embedded
+          timerState={safeTimerState}
+          activeTask={activeTask}
+          todayFocusMs={stats.todayFocusMs}
+          onToast={onToast}
+          currentRoomCode={currentRoomCode}
+          onJoinedRoom={onJoinedRoom || (() => {})}
+          onLeftRoom={onLeftRoom || (() => {})}
+        />
+      </div>
+    );
+  };
+
   /* ----- Cloud Sync Tab Render ----- */
   const renderCloud = () => {
     return (
       <div className="content-inner">
-        <h1 id="setTitle">Cloud Account</h1>
+        <h1 id="setTitle">Account</h1>
         <p className="sub-t">
           Automatic background sync for your stats, tasks, saved links, and preferences.
         </p>
@@ -3448,19 +3658,26 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           >
             <Icon name="x" />
           </button>
-          {NAV_ITEMS.map(([key, label, iconName]) => (
+          {NAV_ITEMS.map(item => (
             <button
-              key={key}
+              key={item.key}
               className="nav-btn"
-              data-nav={key}
-              aria-current={section === key ? 'page' : false}
-              onClick={() => setSection(key)}
+              data-nav={item.key}
+              aria-current={section === item.key ? 'page' : false}
+              onClick={() => setSection(item.key)}
             >
-              <Icon name={iconName} /> {label}
+              <Icon name={item.icon} />
+              <span className="nav-label">{item.label}</span>
+              {item.badge && (
+                <span className={`nav-badge ${item.badgeLive ? 'live' : ''}`}>
+                  {item.badge}
+                </span>
+              )}
+              {item.dot && <span className="nav-dot" aria-hidden="true" />}
             </button>
           ))}
           <div className="side-note" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <PeakusMountainLogo size={28} />
+            <PeakusMountainLogo size={26} />
             <div>
               <b>Peakus</b> — max your focus
               <br />
@@ -3475,8 +3692,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           {section === 'timer' && renderTimer()}
           {section === 'stats' && renderStats()}
           {section === 'quotes' && renderQuotes()}
-          {section === 'language' && renderLanguage()}
           {section === 'music' && renderMusic()}
+          {section === 'language' && renderLanguage()}
+          {section === 'rooms' && renderRooms()}
           {section === 'cloud' && renderCloud()}
           {section === 'extras' && renderExtras()}
         </div>
