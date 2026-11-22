@@ -1,4 +1,5 @@
 {
+  "id": "/",
   "name": "Peakus - max your focus",
   "short_name": "Peakus",
   "description": "Peakus - max your focus. Study and focus with custom YouTube backgrounds, video background uploads, ambient sounds, YouTube music streaming, and Pomodoro timer. Credits: ig;human.ext",
@@ -13,12 +14,14 @@
     {
       "src": "/icon-192.png",
       "sizes": "192x192",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any"
     },
     {
       "src": "/icon-512.png",
       "sizes": "512x512",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any"
     },
     {
       "src": "/icon-maskable.png",

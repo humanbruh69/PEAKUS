@@ -8,6 +8,8 @@ interface ResetSegmentModalProps {
   onResetAll: () => void;
   currentCycle: number;
   totalCycles: number;
+  hardcoreMode?: boolean;
+  onQuitHardcore?: () => void;
   lang?: LanguageCode | string;
 }
 
@@ -16,6 +18,9 @@ const COPY: Record<
   {
     title: string;
     subtitle: string;
+    hardcoreSubtitle: string;
+    hardcoreBadge: string;
+    hardcoreFootnote: string;
     resetPart: string;
     resetWhole: string;
     footnote: string;
@@ -25,14 +30,22 @@ const COPY: Record<
   en: {
     title: 'Reset Timer',
     subtitle: 'Start over just this part, or the whole session?',
+    hardcoreSubtitle: 'Resetting is for the weak. Start over this part or the whole session?',
+    hardcoreBadge: 'Hardcore Mode Active',
+    hardcoreFootnote:
+      'Hardcore Mode: Elapsed focus time is discarded and will NOT count toward stats or streak.',
     resetPart: 'Reset this part',
     resetWhole: 'Reset whole session',
-    footnote: 'Your focus time is saved, even when you reset.',
+    footnote: 'Normal Mode: Your elapsed focus time is saved in stats, even when you reset.',
     closeLabel: 'Close reset dialog',
   },
   ta: {
     title: 'நேரத்தை மீட்டமை',
     subtitle: 'இந்த பகுதியை மட்டும் தொடங்கவா, அல்லது முழு அமர்வையுமா?',
+    hardcoreSubtitle: 'ஹார்ட்கோர் முறை: மீட்டமைத்தால் நேரம் சேமிக்கப்படாது. தொடரவா?',
+    hardcoreBadge: 'ஹார்ட்கோர் முறை செயலில்',
+    hardcoreFootnote:
+      'ஹார்ட்கோர் முறை: மீட்டமைக்கும் போது கவன நேரம் புள்ளிவிவரத்தில் சேர்க்கப்படாது.',
     resetPart: 'இந்த பகுதியை மீட்டமை',
     resetWhole: 'முழு அமர்வை மீட்டமை',
     footnote: 'மீட்டமைத்தாலும் உங்கள் கவன நேரம் சேமிக்கப்படும்.',
@@ -41,9 +54,13 @@ const COPY: Record<
   es: {
     title: 'Reiniciar temporizador',
     subtitle: '¿Reiniciar solo esta parte o toda la sesión?',
+    hardcoreSubtitle: 'Reiniciar es de débiles. ¿Reiniciar esta parte o toda la sesión?',
+    hardcoreBadge: 'Modo Hardcore Activo',
+    hardcoreFootnote:
+      'Modo Hardcore: el tiempo transcurrido se descarta y NO suma a estadísticas ni racha.',
     resetPart: 'Reiniciar esta parte',
     resetWhole: 'Reiniciar toda la sesión',
-    footnote: 'Tu tiempo de foco se guarda, incluso al reiniciar.',
+    footnote: 'Tu tiempo de foco se guarda en estadísticas, incluso al reiniciar.',
     closeLabel: 'Cerrar',
   },
 };
@@ -53,6 +70,10 @@ export const ResetSegmentModal: React.FC<ResetSegmentModalProps> = ({
   onClose,
   onResetCurrent,
   onResetAll,
+  currentCycle,
+  totalCycles,
+  hardcoreMode = false,
+  onQuitHardcore,
   lang = 'en',
 }) => {
   useEffect(() => {
@@ -70,6 +91,8 @@ export const ResetSegmentModal: React.FC<ResetSegmentModalProps> = ({
   if (!isOpen) return null;
 
   const c = COPY[(lang as LanguageCode)] || COPY.en;
+  const safeTotal = Math.max(1, totalCycles || 4);
+  const completedCycles = Math.max(0, currentCycle || 0);
 
   return (
     <div
@@ -94,13 +117,16 @@ export const ResetSegmentModal: React.FC<ResetSegmentModalProps> = ({
       }}
     >
       <div
+        className="gui-scaled-modal"
         style={{
           width: '100%',
-          maxWidth: '400px',
-          backgroundColor: 'rgba(20, 23, 36, 0.86)',
+          maxWidth: '410px',
+          backgroundColor: 'rgba(20, 23, 36, 0.88)',
           backdropFilter: 'blur(24px) saturate(1.2)',
           WebkitBackdropFilter: 'blur(24px) saturate(1.2)',
-          border: '1px solid rgba(255, 255, 255, 0.12)',
+          border: hardcoreMode
+            ? '1px solid rgba(244, 63, 94, 0.42)'
+            : '1px solid rgba(255, 255, 255, 0.12)',
           borderRadius: '20px',
           boxShadow: '0 24px 60px rgba(0, 0, 0, 0.55)',
           padding: '28px 24px 22px',
@@ -152,6 +178,29 @@ export const ResetSegmentModal: React.FC<ResetSegmentModalProps> = ({
           </svg>
         </button>
 
+        {hardcoreMode && (
+          <div
+            data-testid="resetHardcoreBadge"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginBottom: '10px',
+              padding: '3px 10px',
+              borderRadius: '999px',
+              backgroundColor: 'rgba(244, 63, 94, 0.16)',
+              border: '1px solid rgba(244, 63, 94, 0.42)',
+              fontSize: '11px',
+              fontWeight: 700,
+              letterSpacing: '0.06em',
+              textTransform: 'uppercase',
+              color: '#fda4af',
+            }}
+          >
+            {c.hardcoreBadge}
+          </div>
+        )}
+
         <h2
           id="resetSegTitle"
           style={{
@@ -167,14 +216,38 @@ export const ResetSegmentModal: React.FC<ResetSegmentModalProps> = ({
 
         <p
           style={{
-            margin: '0 0 22px',
+            margin: completedCycles > 0 ? '0 0 12px' : '0 0 20px',
             fontSize: '14px',
             lineHeight: 1.45,
-            color: 'rgba(255, 255, 255, 0.68)',
+            color: hardcoreMode ? '#fecdd3' : 'rgba(255, 255, 255, 0.72)',
           }}
         >
-          {c.subtitle}
+          {hardcoreMode ? c.hardcoreSubtitle : c.subtitle}
         </p>
+
+        {completedCycles > 0 && (
+          <div
+            data-testid="resetCycleProgressNotice"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '6px',
+              marginBottom: '18px',
+              padding: '5px 12px',
+              borderRadius: '999px',
+              backgroundColor: 'rgba(52, 211, 153, 0.12)',
+              border: '1px solid rgba(52, 211, 153, 0.28)',
+              fontSize: '12px',
+              fontWeight: 600,
+              color: '#6ee7b7',
+            }}
+          >
+            <span>
+              {completedCycles}/{safeTotal} cycles completed (kept in stats)
+            </span>
+          </div>
+        )}
 
         <div
           style={{
@@ -245,13 +318,37 @@ export const ResetSegmentModal: React.FC<ResetSegmentModalProps> = ({
 
         <p
           style={{
-            margin: '18px 0 0',
+            margin: '16px 0 0',
             fontSize: '12.5px',
-            color: 'rgba(255, 255, 255, 0.5)',
+            lineHeight: 1.4,
+            color: hardcoreMode ? '#fda4af' : 'rgba(255, 255, 255, 0.56)',
           }}
         >
-          {c.footnote}
+          {hardcoreMode ? c.hardcoreFootnote : c.footnote}
         </p>
+
+        {hardcoreMode && onQuitHardcore && (
+          <button
+            type="button"
+            id="btnResetModalQuitHardcore"
+            onClick={() => {
+              onClose();
+              onQuitHardcore();
+            }}
+            style={{
+              marginTop: '12px',
+              background: 'transparent',
+              border: 'none',
+              color: '#fda4af',
+              fontSize: '12.5px',
+              fontWeight: 650,
+              textDecoration: 'underline',
+              cursor: 'pointer',
+            }}
+          >
+            Quit Hardcore Mode...
+          </button>
+        )}
       </div>
     </div>
   );

@@ -1,0 +1,195 @@
+export interface HumiliationLine {
+  id: number;
+  category: string;
+  english: string;
+  tamil: string;
+  tamil_transliteration: string;
+}
+
+export interface HumiliationDataset {
+  metadata: {
+    title: string;
+    languages: string[];
+    count: number;
+  };
+  lines: HumiliationLine[];
+}
+
+export const HUMILIATION_JSON_PATH = '/assets/aistudio/humiliation_f970ee98.json';
+
+export const FALLBACK_HUMILIATION_LINES: HumiliationLine[] = [
+  {
+    id: 1,
+    category: 'incompetence',
+    english: "If you can't do this, you suck.",
+    tamil: 'உன்னால இதைக்கூட செய்ய முடியலைனா, நீ ஒன்னுக்கும் உதவாதவன்.',
+    tamil_transliteration: 'Unnaala idhaikkooda seyya mudiyalainaa, nee onnukkum udhaavaadhavan.',
+  },
+  {
+    id: 2,
+    category: 'failure',
+    english: 'You are a complete failure.',
+    tamil: 'நீ ஒரு முழு தோல்வி.',
+    tamil_transliteration: 'Nee oru muzhu tholvi.',
+  },
+  {
+    id: 3,
+    category: 'skill_issue',
+    english: 'Even a beginner could do better than this.',
+    tamil: 'புதுசா வர்றவங்க கூட உன்னை விட நல்லா செய்வாங்க.',
+    tamil_transliteration: 'Pudhusaa varravanga kooda unnai vida nallaa seivaanga.',
+  },
+  {
+    id: 4,
+    category: 'embarrassment',
+    english: 'That was embarrassing to watch.',
+    tamil: 'இதைப் பார்க்கவே ரொம்ப அசிங்கமா இருக்கு.',
+    tamil_transliteration: 'Idhaip paarkkave romba asingamaa irukku.',
+  },
+  {
+    id: 5,
+    category: 'effort',
+    english: 'Did you even try, or is this your actual best?',
+    tamil: 'நீ முயற்சியாவது செஞ்சியா, இல்ல இதுதான் உன் திறமையா?',
+    tamil_transliteration: 'Nee muyarchiyaavadhu senjiyaa, illa idhudhaan un thiramaiyaa?',
+  },
+  {
+    id: 6,
+    category: 'failure',
+    english: 'You had one job and still messed it up.',
+    tamil: 'ஒரே ஒரு வேலைதான் கொடுத்தோம், அதையும் சொதப்பிட்ட.',
+    tamil_transliteration: 'Ore oru velaidhaan koduththom, adhaiyum sodhappitta.',
+  },
+  {
+    id: 7,
+    category: 'giving_up',
+    english: 'Honestly, giving up might be your best move.',
+    tamil: 'உண்மைய சொல்லணும்னா, நீ விட்டுட்டுப் போறதுதான் நல்லது.',
+    tamil_transliteration: 'Unmaiya sollanumnaa, nee vittuttup poradhudhaan nalladhu.',
+  },
+  {
+    id: 8,
+    category: 'disappointment',
+    english: 'I expected nothing, and you still disappointed me.',
+    tamil: 'நான் எதுவுமே எதிர்பார்க்கல, ஆனா அதிலேயும் ஏமாத்திட்ட.',
+    tamil_transliteration: 'Naan edhuvume edhirpaarkkala, aanaa adhileyum eemaaththitta.',
+  },
+  {
+    id: 9,
+    category: 'incompetence',
+    english: "You're making simple things look impossible.",
+    tamil: 'சாதாரண விஷயத்தைக் கூட உன்னால முடியாத மாதிரி ஆக்கிட்ட.',
+    tamil_transliteration: 'Saadhaarana vishayaththaik kooda unnaala mudiyaadha maadhiri aakkitta.',
+  },
+  {
+    id: 10,
+    category: 'incompetence',
+    english: "If incompetence were a trophy, you'd win gold.",
+    tamil: 'திறமை இல்லாததுக்குப் பரிசு கொடுத்தா, உனக்குத்தான் தங்கப் பதக்கம்.',
+    tamil_transliteration: 'Thiramai illaadhadhukkup parisu koduththaa, unakkuththaan thangap padhakkam.',
+  },
+  {
+    id: 11,
+    category: 'speed',
+    english: "You're slower than a buffering video on 2G.",
+    tamil: '2G நெட்வொர்க்ல வீடியோ ஓடுறதை விட நீ ரொம்ப மெதுவா இருக்க.',
+    tamil_transliteration: '2G network-la video oduradhai vida nee romba medhuvaa irukka.',
+  },
+  {
+    id: 12,
+    category: 'skill_issue',
+    english: "This is proof that practice doesn't help everyone.",
+    tamil: 'எவ்வளவு பயிற்சி பண்ணாலும் எல்லாருக்கும் வராதுங்கிறதுக்கு நீதான் உதாரணம்.',
+    tamil_transliteration: 'Evvalavu payirchi pannaalum ellaarukkum varaadhungiradhukku needhaan udhaaranam.',
+  },
+  {
+    id: 13,
+    category: 'overconfidence',
+    english: 'You talk a big game for someone who keeps losing.',
+    tamil: 'தொடர்ந்து தோத்துக்கிட்டே இருந்துட்டு, பேச்சுக்கு மட்டும் ஒன்னும் குறைச்சல் இல்ல.',
+    tamil_transliteration: 'Thodarndhu thoththukkitte irundhuttu, pechchukku mattum onnum kuraichal illa.',
+  },
+  {
+    id: 14,
+    category: 'failure',
+    english: 'Not even luck could save you from that performance.',
+    tamil: 'அதிர்ஷ்டம் கூட உன்னை இந்தத் தோல்வியிலிருந்து காப்பாத்த முடியாது.',
+    tamil_transliteration: 'Adhirshdam kooda unnai indhat tholviyilirundhu kaappaaththa mudiyaadhu.',
+  },
+  {
+    id: 15,
+    category: 'standards',
+    english: "You're setting the bar so low, it's underground.",
+    tamil: 'நீ தரத்தைத் தரைமட்டத்துக்கும் கீழே கொண்டு போயிட்ட.',
+    tamil_transliteration: 'Nee tharaththait tharaimattaththukkum keezhe kondu poyitta.',
+  },
+  {
+    id: 16,
+    category: 'failure',
+    english: 'Congratulations, you managed to fail the easiest part.',
+    tamil: 'வாழ்த்துக்கள், ரொம்ப சுலபமான பகுதியிலயே தோத்துட்ட.',
+    tamil_transliteration: 'Vaazhththukkal, romba sulabamaana pagudhiyilaye thoththutta.',
+  },
+  {
+    id: 17,
+    category: 'accountability',
+    english: 'Stop blaming the tools; the problem is you.',
+    tamil: 'கருவிகளைக் குறை சொல்றதை நிறுத்து; பிரச்சனை உன்கிட்டதான் இருக்கு.',
+    tamil_transliteration: 'Karuvigalaik kurai solradhai niruththu; prachchanai unkittadhaan irukku.',
+  },
+  {
+    id: 18,
+    category: 'overconfidence',
+    english: 'Your confidence is impressive, considering the results.',
+    tamil: 'உன் முடிவுகளைப் பார்க்கும்போது, உன் தன்னம்பிக்கை ஆச்சரியமா இருக்கு.',
+    tamil_transliteration: 'Un mudivugalaip paarkkumbodhu, un thannambikkai aachchariyamaa irukku.',
+  },
+  {
+    id: 19,
+    category: 'giving_up',
+    english: 'Maybe try something easier—like watching someone else do it.',
+    tamil: 'வேற ஏதாவது சுலபமான வேலை பாரு—மத்தவங்க செய்யறதை வேடிக்கை பார்க்கிற மாதிரி.',
+    tamil_transliteration: 'Vera edhaavadhu sulabamaana velai paaru—maththavanga seyyaradhai vedikkai paarkkira maadhiri.',
+  },
+  {
+    id: 20,
+    category: 'skill_issue',
+    english: "You're not even in the same league as the rest.",
+    tamil: 'மத்தவங்க பக்கத்துல கூட உன்னால நிக்க முடியாது.',
+    tamil_transliteration: 'Maththavanga pakkaththula kooda unnaala nikka mudiyaadhu.',
+  },
+];
+
+let cachedLines: HumiliationLine[] | null = null;
+
+export async function loadHumiliationLines(): Promise<HumiliationLine[]> {
+  if (cachedLines && cachedLines.length > 0) return cachedLines;
+  try {
+    if (typeof fetch === 'function') {
+      const res = await fetch(HUMILIATION_JSON_PATH, { cache: 'force-cache' });
+      if (res.ok) {
+        const data = (await res.json()) as Partial<HumiliationDataset>;
+        if (Array.isArray(data?.lines) && data.lines.length > 0) {
+          cachedLines = data.lines.filter(
+            (l): l is HumiliationLine =>
+              !!l && typeof l.english === 'string' && typeof l.tamil === 'string'
+          );
+          if (cachedLines.length > 0) return cachedLines;
+        }
+      }
+    }
+  } catch {
+    // Fall back to bundled lines when offline
+  }
+  return FALLBACK_HUMILIATION_LINES;
+}
+
+export function pickRandomHumiliationLine(
+  lines: HumiliationLine[] = FALLBACK_HUMILIATION_LINES,
+  rng: () => number = Math.random
+): HumiliationLine {
+  const pool = lines.length > 0 ? lines : FALLBACK_HUMILIATION_LINES;
+  const rawIdx = Math.floor(rng() * pool.length);
+  const idx = Math.max(0, Math.min(pool.length - 1, rawIdx));
+  return pool[idx];
+}

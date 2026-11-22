@@ -31,7 +31,7 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({ state }) => {
 
   return (
     <>
-      <div className="scrim" onClick={state.onCancel} />
+      <div className="scrim" style={{ zIndex: 99 }} onClick={state.onCancel} />
       <dialog
         className="confirm"
         open
@@ -43,7 +43,7 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({ state }) => {
         <p id="cfText">{state.text}</p>
         <div className="acts">
           <button className="btn" onClick={state.onCancel}>
-            {state.cancelText || 'Cancelar'}
+            {state.cancelText || 'Cancel'}
           </button>
           <button
             className={`btn ${state.danger ? 'danger' : 'primary'}`}
@@ -51,7 +51,7 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({ state }) => {
               state.onConfirm();
             }}
           >
-            {state.okText || 'Aceptar'}
+            {state.okText || 'Confirm'}
           </button>
         </div>
       </dialog>

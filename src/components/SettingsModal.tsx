@@ -10,6 +10,13 @@ import { sync } from '../lib/sync';
 import { Store } from '../lib/store';
 import { t } from '../lib/i18n';
 import { getActiveQuoteList } from '../lib/toxicQuotes';
+import { GOD_MODE_QUOTE_TAG } from '../lib/todoEngine';
+import {
+  GUI_SCALE_OPTIONS,
+  cycleGuiScale,
+  formatGuiScaleLabel,
+  normalizeGuiScale,
+} from '../lib/guiScale';
 import {
   YOUTUBE_BG_PRESETS,
   YOUTUBE_MUSIC_PRESETS,
@@ -26,6 +33,7 @@ import { type PomodoroPreset, saveCustomPreset, applyPresetToSettings } from '..
 import { PeakusMountainLogo } from './PeakusMountainLogo';
 import { CloudAccountSection } from './CloudAccountSection';
 import { StudyRoomPanel } from './StudyRoomModal';
+import type { StudyRoom, RoomMember, RoomMessage } from '../lib/studyRooms';
 import { auth } from '../lib/firebase';
 import { computeStats } from '../lib/statsEngine';
 import {
@@ -63,6 +71,22 @@ interface SettingsModalProps {
   currentRoomCode?: string | null;
   onJoinedRoom?: (code: string) => void;
   onLeftRoom?: () => void;
+  activeRoom?: StudyRoom | null;
+  roomMembers?: RoomMember[];
+  roomMessages?: RoomMessage[];
+  roomUnreadCount?: number;
+  roomChatMuted?: boolean;
+  onToggleRoomChatMuted?: () => void;
+  roomBreakOnlyAlerts?: boolean;
+  onToggleRoomBreakOnlyAlerts?: () => void;
+  onMarkRoomChatRead?: () => void;
+  onRoomTabChange?: (tab: 'members' | 'chat') => void;
+  onEnableHardcoreMode?: () => void;
+  ownRoomTaskText?: string;
+  ownRoomTaskDone?: boolean;
+  onUpdateOwnRoomTask?: (title: string, done: boolean) => void;
+  onForceSync?: () => Promise<boolean>;
+  onRequestQuitHardcore?: () => void;
 }
 
 export type SettingsSectionKey =
@@ -109,6 +133,22 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   currentRoomCode = null,
   onJoinedRoom,
   onLeftRoom,
+  activeRoom = null,
+  roomMembers = [],
+  roomMessages = [],
+  roomUnreadCount = 0,
+  roomChatMuted = false,
+  onToggleRoomChatMuted,
+  roomBreakOnlyAlerts = false,
+  onToggleRoomBreakOnlyAlerts,
+  onMarkRoomChatRead,
+  onRoomTabChange,
+  onEnableHardcoreMode,
+  ownRoomTaskText,
+  ownRoomTaskDone = false,
+  onUpdateOwnRoomTask,
+  onForceSync,
+  onRequestQuitHardcore,
 }) => {
   const [section, setSection] = useState<SectionKey>('themes');
   useEffect(() => {
@@ -538,43 +578,55 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             width: '100%',
             borderRadius: '14px',
             overflow: 'hidden',
-            backgroundImage:
-              bg.kind === 'scene' && bg.id
-                ? `url("${getThumbURL(bg.id)}")`
-                : bg.kind === 'youtube'
-                ? `url("https://img.youtube.com/vi/${bg.youtubeId}/hqdefault.jpg")`
-                : undefined,
             backgroundColor: bg.kind === 'color' ? bg.color : '#0d0d14',
-            backgroundSize: 'cover',
-            backgroundPosition: `${currentModeCfg.posX}% ${currentModeCfg.posY}%`,
             marginBottom: '18px',
             border: '1px solid rgba(255, 255, 255, 0.08)',
           }}
         >
-          {bg.kind === 'videoUpload' && (
-            <video
-              autoPlay
-              loop
-              muted
-              playsInline
-              style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
-              src={
-                customUploads.find(u => u.id === bg.videoUploadId)?.blob
-                  ? URL.createObjectURL(customUploads.find(u => u.id === bg.videoUploadId)!.blob)
-                  : undefined
-              }
-            />
-          )}
-          {bg.kind === 'videoUrl' && bg.videoUrl && (
-            <video
-              autoPlay
-              loop
-              muted
-              playsInline
-              style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
-              src={bg.videoUrl}
-            />
-          )}
+          <div className={`bg-motion-zoom${currentModeCfg.kenBurns ? ' on' : ''}`}>
+            <div className={`bg-motion-shake${currentModeCfg.shakeEffect ? ' on' : ''}`}>
+              {(bg.kind === 'scene' || bg.kind === 'youtube') && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    inset: 0,
+                    backgroundImage:
+                      bg.kind === 'scene' && bg.id
+                        ? `url("${getThumbURL(bg.id)}")`
+                        : bg.kind === 'youtube' && bg.youtubeId
+                        ? `url("https://img.youtube.com/vi/${bg.youtubeId}/hqdefault.jpg")`
+                        : undefined,
+                    backgroundSize: 'cover',
+                    backgroundPosition: `${currentModeCfg.posX}% ${currentModeCfg.posY}%`,
+                  }}
+                />
+              )}
+              {bg.kind === 'videoUpload' && (
+                <video
+                  autoPlay
+                  loop
+                  muted
+                  playsInline
+                  style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+                  src={
+                    customUploads.find(u => u.id === bg.videoUploadId)?.blob
+                      ? URL.createObjectURL(customUploads.find(u => u.id === bg.videoUploadId)!.blob)
+                      : undefined
+                  }
+                />
+              )}
+              {bg.kind === 'videoUrl' && bg.videoUrl && (
+                <video
+                  autoPlay
+                  loop
+                  muted
+                  playsInline
+                  style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+                  src={bg.videoUrl}
+                />
+              )}
+            </div>
+          </div>
 
           {/* Dim and Blur Overlays */}
           <div
@@ -1448,6 +1500,52 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         {/* ================= SUB-TAB 4: ATMOSPHERE & ACCENTS ================= */}
         {themeTab === 'atmosphere' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            {/* Minecraft-Style GUI Scale Card */}
+            <div
+              style={{
+                padding: '18px 20px',
+                borderRadius: '14px',
+                backgroundColor: 'rgba(255, 255, 255, 0.02)',
+                border: '1px solid rgba(255, 255, 255, 0.08)',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', marginBottom: '12px' }}>
+                <div>
+                  <h3 style={{ margin: '0 0 3px', fontSize: '15.5px', fontWeight: 700, color: '#ffffff' }}>
+                    {t('guiScaleTitle', lang)}
+                  </h3>
+                  <p style={{ margin: 0, fontSize: '12.5px', color: 'var(--muted)' }}>
+                    {t('guiScaleDesc', lang)}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className="btn gui-cycle-btn"
+                  onClick={() => {
+                    const next = cycleGuiScale(settings.appearance.guiScale);
+                    updateSettingField('appearance.guiScale', next);
+                  }}
+                >
+                  GUI Scale: {formatGuiScaleLabel(settings.appearance.guiScale, window.innerWidth, window.innerHeight)}
+                </button>
+              </div>
+              <div className="seg gui-scale-seg" role="group" aria-label={t('guiScaleTitle', lang)}>
+                {GUI_SCALE_OPTIONS.map(opt => {
+                  const active = normalizeGuiScale(settings.appearance.guiScale) === opt.value;
+                  return (
+                    <button
+                      key={String(opt.value)}
+                      type="button"
+                      aria-pressed={active}
+                      onClick={() => updateSettingField('appearance.guiScale', opt.value)}
+                    >
+                      {opt.shortLabel}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
             {/* Visual Atmosphere Card */}
             <div
               style={{
@@ -1566,14 +1664,70 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     Film-grade midtone contrast, highlight compression, and gentle vignette focus.
                   </div>
                 </div>
-                <label className="sw" aria-label="Key Tone Effect">
-                  <input
-                    type="checkbox"
-                    checked={!!currentModeCfg.keyTone}
-                    onChange={e => updateSettingField(`modes.@.keyTone`, e.target.checked)}
-                  />
-                  <span className="slider" />
-                </label>
+                <button
+                  type="button"
+                  role="switch"
+                  id="toggleKeyTone"
+                  className="switch"
+                  aria-label="Key Tone Effect"
+                  aria-checked={!!currentModeCfg.keyTone}
+                  onClick={() => updateSettingField('modes.@.keyTone', !currentModeCfg.keyTone)}
+                />
+              </div>
+
+              {/* Keystroke Effect (Slow Zoom In & Out) Toggle */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '14px', paddingTop: '14px', marginTop: '14px', borderTop: '1px solid rgba(255, 255, 255, 0.08)' }}>
+                <div>
+                  <div style={{ fontWeight: 650, fontSize: '14px', color: '#ffffff', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span>Keystroke Effect</span>
+                    <span
+                      style={{
+                        fontSize: '11px',
+                        padding: '1px 7px',
+                        borderRadius: '10px',
+                        background: 'var(--accent-soft)',
+                        color: 'var(--accent-text)',
+                        border: '1px solid var(--accent-border)',
+                        fontWeight: 600,
+                      }}
+                    >
+                      Slow Zoom
+                    </span>
+                  </div>
+                  <div style={{ fontSize: '12px', color: 'var(--muted)', marginTop: '2px' }}>
+                    Slowly zooms in and out — brings static photos and custom wallpapers to life.
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  id="toggleKeystrokeZoom"
+                  className="switch"
+                  aria-label="Keystroke Effect (Slow Zoom In & Out)"
+                  aria-checked={!!currentModeCfg.kenBurns}
+                  onClick={() => updateSettingField('modes.@.kenBurns', !currentModeCfg.kenBurns)}
+                />
+              </div>
+
+              {/* Background Shake Effect Toggle */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '14px', paddingTop: '14px', marginTop: '14px', borderTop: '1px solid rgba(255, 255, 255, 0.08)' }}>
+                <div>
+                  <div style={{ fontWeight: 650, fontSize: '14px', color: '#ffffff', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span>Background Shake Effect</span>
+                  </div>
+                  <div style={{ fontSize: '12px', color: 'var(--muted)', marginTop: '2px' }}>
+                    Gentle handheld camera drift and micro-motion across your background canvas.
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  id="toggleBgShake"
+                  className="switch"
+                  aria-label="Background Shake Effect"
+                  aria-checked={!!currentModeCfg.shakeEffect}
+                  onClick={() => updateSettingField('modes.@.shakeEffect', !currentModeCfg.shakeEffect)}
+                />
               </div>
             </div>
 
@@ -2240,7 +2394,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <label htmlFor="tmMode">{t('timerMode', lang)}</label>
             <select
               id="tmMode"
-              value={tSettings.mode}
+              value={tSettings.hardcoreMode ? 'pomodoro' : tSettings.mode}
+              disabled={!!tSettings.hardcoreMode}
               onChange={e => updateSettingField('timer.mode', e.target.value)}
             >
               <option value="pomodoro">{t('pomoMode', lang)}</option>
@@ -2353,13 +2508,21 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   </span>
                 </div>
                 <div className="field">
-                  <label>{t('sessionsUntilLong', lang)}</label>
+                  <label>
+                    {t('sessionsUntilLong', lang)}
+                    {tSettings.hardcoreMode && (
+                      <span className="hardcore-lock-tag" style={{ marginLeft: '6px' }}>
+                        {t('hardcoreLockedBadge', lang)}
+                      </span>
+                    )}
+                  </label>
                   <span className="num">
                     <input
                       type="number"
                       min="1"
                       max="12"
-                      value={tSettings.cycles}
+                      disabled={!!tSettings.hardcoreMode}
+                      value={tSettings.hardcoreMode ? 4 : tSettings.cycles}
                       onChange={e => updateSettingField('timer.cycles', Number(e.target.value))}
                     />
                     <span>ses.</span>
@@ -2413,7 +2576,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     }}
                   >
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: '1 1 180px', minWidth: 0 }}>
                         <span
                           style={{
                             fontSize: '11px',
@@ -2422,6 +2585,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                             borderRadius: '999px',
                             background: isCurrent ? 'var(--accent)' : 'rgba(255,255,255,0.12)',
                             color: '#fff',
+                            flexShrink: 0,
                           }}
                         >
                           Preset #{index + 1}
@@ -2434,13 +2598,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                             fontWeight: 700,
                             fontSize: '13px',
                             padding: '4px 8px',
+                            flex: '1 1 auto',
+                            minWidth: 0,
                             maxWidth: '180px',
                           }}
                           onChange={e => handleUpdatePresetField(preset.id, 'name', e.target.value)}
                         />
                       </div>
 
-                      <div style={{ display: 'flex', gap: '6px' }}>
+                      <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
                         <button
                           type="button"
                           className="btn"
@@ -2460,15 +2626,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       </div>
                     </div>
 
-                    <div
-                      style={{
-                        display: 'grid',
-                        gridTemplateColumns: 'repeat(auto-fit, minmax(70px, 1fr))',
-                        gap: '8px',
-                      }}
-                    >
-                      <div className="field" style={{ margin: 0 }}>
-                        <label style={{ fontSize: '11px' }}>{t('focusDur', lang)}</label>
+                    <div className="preset-fields">
+                      <div className="field">
+                        <label>{t('focusDur', lang)}</label>
                         <span className="num">
                           <input
                             type="number"
@@ -2482,8 +2642,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                           <span>m</span>
                         </span>
                       </div>
-                      <div className="field" style={{ margin: 0 }}>
-                        <label style={{ fontSize: '11px' }}>{t('shortDur', lang)}</label>
+                      <div className="field">
+                        <label>{t('shortDur', lang)}</label>
                         <span className="num">
                           <input
                             type="number"
@@ -2497,8 +2657,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                           <span>m</span>
                         </span>
                       </div>
-                      <div className="field" style={{ margin: 0 }}>
-                        <label style={{ fontSize: '11px' }}>{t('longDur', lang)}</label>
+                      <div className="field">
+                        <label>{t('longDur', lang)}</label>
                         <span className="num">
                           <input
                             type="number"
@@ -2512,8 +2672,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                           <span>m</span>
                         </span>
                       </div>
-                      <div className="field" style={{ margin: 0 }}>
-                        <label style={{ fontSize: '11px' }}>{t('sessionsUntilLong', lang)}</label>
+                      <div className="field">
+                        <label>{t('sessionsUntilLong', lang)}</label>
                         <span className="num">
                           <input
                             type="number"
@@ -2567,6 +2727,41 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             />
           </div>
 
+          {/* Hardcore Mode Toggle */}
+          <div className="row center-y">
+            <div className="txt">
+              <b>{t('hardcoreMode', lang)}</b>
+              <span>{t('hardcoreModeDesc', lang)}</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+              {tSettings.hardcoreMode && onRequestQuitHardcore && (
+                <button
+                  type="button"
+                  id="btnSettingsQuitHardcore"
+                  className="hardcore-quit-btn"
+                  onClick={onRequestQuitHardcore}
+                >
+                  {t('quitHardcore', lang)}
+                </button>
+              )}
+              <button
+                id="toggleHardcoreMode"
+                className="switch"
+                role="switch"
+                aria-label={t('hardcoreMode', lang)}
+                aria-checked={!!tSettings.hardcoreMode}
+                onClick={() => {
+                  if (tSettings.hardcoreMode) {
+                    onRequestQuitHardcore?.();
+                    return;
+                  }
+                  updateSettingField('timer.hardcoreMode', true);
+                  onToast('Hardcore Mode ON — Auto-start Focus & Breaks locked. Finish 4 sessions or Quit!');
+                }}
+              />
+            </div>
+          </div>
+
           <div className="row center-y">
             <div className="txt">
               <b>{t('progressBar', lang)}</b>
@@ -2601,28 +2796,60 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
           <div className="row center-y">
             <div className="txt">
-              <b>{pomo ? t('autoBreak', lang) : 'Auto-restart'}</b>
+              <b>
+                {pomo ? t('autoBreak', lang) : 'Auto-restart'}
+                {tSettings.hardcoreMode && (
+                  <span className="hardcore-lock-tag" data-testid="autoBreakLockTag">
+                    {t('hardcoreLockedBadge', lang)}
+                  </span>
+                )}
+              </b>
               <span>{pomo ? t('autoBreakDesc', lang) : 'Restart countdown on end.'}</span>
             </div>
             <button
-              className="switch"
+              id="toggleAutoBreak"
+              className={`switch ${tSettings.hardcoreMode ? 'locked' : ''}`}
               role="switch"
-              aria-checked={tSettings.autoBreak}
-              onClick={() => updateSettingField('timer.autoBreak', !tSettings.autoBreak)}
+              aria-label={pomo ? t('autoBreak', lang) : 'Auto-restart'}
+              aria-checked={tSettings.hardcoreMode ? true : tSettings.autoBreak}
+              aria-disabled={!!tSettings.hardcoreMode}
+              onClick={() => {
+                if (tSettings.hardcoreMode) {
+                  onToast('Locked in Hardcore Mode — Auto-start Breaks is mandatory!', 'err');
+                  return;
+                }
+                updateSettingField('timer.autoBreak', !tSettings.autoBreak);
+              }}
             />
           </div>
 
           {pomo && (
             <div className="row center-y">
               <div className="txt">
-                <b>{t('autoFocus', lang)}</b>
+                <b>
+                  {t('autoFocus', lang)}
+                  {tSettings.hardcoreMode && (
+                    <span className="hardcore-lock-tag" data-testid="autoFocusLockTag">
+                      {t('hardcoreLockedBadge', lang)}
+                    </span>
+                  )}
+                </b>
                 <span>{t('autoFocusDesc', lang)}</span>
               </div>
               <button
-                className="switch"
+                id="toggleAutoFocus"
+                className={`switch ${tSettings.hardcoreMode ? 'locked' : ''}`}
                 role="switch"
-                aria-checked={tSettings.autoFocus}
-                onClick={() => updateSettingField('timer.autoFocus', !tSettings.autoFocus)}
+                aria-label={t('autoFocus', lang)}
+                aria-checked={tSettings.hardcoreMode ? true : tSettings.autoFocus}
+                aria-disabled={!!tSettings.hardcoreMode}
+                onClick={() => {
+                  if (tSettings.hardcoreMode) {
+                    onToast('Locked in Hardcore Mode — Auto-start Focus is mandatory!', 'err');
+                    return;
+                  }
+                  updateSettingField('timer.autoFocus', !tSettings.autoFocus);
+                }}
               />
             </div>
           )}
@@ -3363,6 +3590,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <div className="txt">
               <b>Use custom quote</b>
               <span>{q.custom.trim() ? '' : 'Type a quote above to activate.'}</span>
+              {q.useCustom && q.custom.trim() && q.godMode && (
+                <div className="quote-god-sub">{GOD_MODE_QUOTE_TAG}</div>
+              )}
             </div>
             <button
               className="switch"
@@ -3394,11 +3624,34 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             }}
           >
             {currentQuoteList.map((x, i) => (
-              <li key={i} style={{ marginBottom: '6px' }}>
-                {x}
+              <li key={i} style={{ marginBottom: q.godMode ? '10px' : '6px' }}>
+                <div>{x}</div>
+                {q.godMode && <div className="quote-god-sub">{GOD_MODE_QUOTE_TAG}</div>}
               </li>
             ))}
           </ul>
+        </div>
+
+        <div className="card god-egg-card" data-testid="godModeCard">
+          <div className="row center-y">
+            <div className="txt">
+              <b>God</b>
+              <span>Secret easter egg toggle.</span>
+            </div>
+            <button
+              id="toggleGodMode"
+              type="button"
+              className="switch"
+              role="switch"
+              aria-label="God"
+              aria-checked={!!q.godMode}
+              onClick={() => {
+                const nextVal = !q.godMode;
+                updateSettingField('quotes.godMode', nextVal);
+                onToast(nextVal ? 'God mode enabled.' : 'God mode disabled.');
+              }}
+            />
+          </div>
         </div>
       </div>
     );
@@ -3463,6 +3716,43 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             >
               <Icon name="external" /> Instagram: @human.exr
             </a>
+          </div>
+        </div>
+
+        <div className="card" data-testid="guiScaleCard">
+          <div className="row center-y" style={{ alignItems: 'flex-start', gap: '12px', flexWrap: 'wrap' }}>
+            <div className="txt" style={{ flex: '1 1 220px' }}>
+              <b>{t('guiScaleTitle', lang)}</b>
+              <span>{t('guiScaleDesc', lang)}</span>
+            </div>
+            <button
+              type="button"
+              id="btnCycleGuiScale"
+              data-testid="guiScaleCycleBtn"
+              className="btn gui-cycle-btn"
+              onClick={() => {
+                const next = cycleGuiScale(settings.appearance.guiScale);
+                updateSettingField('appearance.guiScale', next);
+              }}
+            >
+              GUI Scale: {formatGuiScaleLabel(settings.appearance.guiScale, window.innerWidth, window.innerHeight)}
+            </button>
+          </div>
+          <div className="seg gui-scale-seg" role="group" aria-label={t('guiScaleTitle', lang)} style={{ marginTop: '12px' }}>
+            {GUI_SCALE_OPTIONS.map(opt => {
+              const active = normalizeGuiScale(settings.appearance.guiScale) === opt.value;
+              return (
+                <button
+                  key={String(opt.value)}
+                  type="button"
+                  data-testid={`guiScaleOpt-${String(opt.value)}`}
+                  aria-pressed={active}
+                  onClick={() => updateSettingField('appearance.guiScale', opt.value)}
+                >
+                  {opt.shortLabel}
+                </button>
+              );
+            })}
           </div>
         </div>
 
@@ -3553,9 +3843,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <kbd>Space</kbd>
             <span>Start / Pause timer</span>
             <kbd>R</kbd>
-            <span>Reset current interval</span>
-            <kbd>N</kbd>
-            <span>Skip to next interval</span>
+            <span>Reset timer (asks confirmation first)</span>
+            <kbd>N / S</kbd>
+            <span>Skip interval (warns first; blocked in Hardcore Mode)</span>
             <kbd>1</kbd>
             <span>Home mode</span>
             <kbd>2</kbd>
@@ -3566,6 +3856,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <span>Toggle Tasks</span>
             <kbd>M</kbd>
             <span>Toggle Ambient Sounds</span>
+            <kbd>G</kbd>
+            <span>Open Study Rooms</span>
+            <kbd>Z</kbd>
+            <span>Toggle Zen Mode</span>
             <kbd>F</kbd>
             <span>Toggle Fullscreen</span>
             <kbd>,</kbd>
@@ -3600,6 +3894,22 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         </p>
         <StudyRoomPanel
           embedded
+          managedExternally
+          room={activeRoom}
+          members={roomMembers}
+          messages={roomMessages}
+          unreadCount={roomUnreadCount}
+          chatMuted={roomChatMuted}
+          onToggleChatMuted={onToggleRoomChatMuted}
+          breakOnlyAlerts={roomBreakOnlyAlerts}
+          onToggleBreakOnlyAlerts={onToggleRoomBreakOnlyAlerts}
+          onMarkChatRead={onMarkRoomChatRead}
+          onActiveTabChange={onRoomTabChange}
+          isHardcoreMode={!!settings.timer.hardcoreMode}
+          onEnableHardcoreMode={onEnableHardcoreMode}
+          ownTaskText={ownRoomTaskText}
+          ownTaskDone={ownRoomTaskDone}
+          onUpdateOwnTask={onUpdateOwnRoomTask}
           timerState={safeTimerState}
           activeTask={activeTask}
           todayFocusMs={stats.todayFocusMs}
@@ -3636,6 +3946,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           }
           onToast={onToast}
           lang={lang}
+          onUpdateSettingsName={name => updateSettingField('name', name)}
+          onForceSync={onForceSync}
         />
       </div>
     );

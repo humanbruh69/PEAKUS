@@ -1,11 +1,26 @@
 import { U } from './utils';
 import { DEFAULTS } from './constants';
-import { Settings, TasksState, HistoryState, TimerState, NotesDoc, BackgroundConfig, Task, Session } from '../types';
+import {
+  Settings,
+  TasksState,
+  HistoryState,
+  TimerState,
+  NotesDoc,
+  BackgroundConfig,
+  Task,
+  Session,
+  TodoItem,
+  TodoNotificationPrefs,
+} from '../types';
+import { sanitizeTodoItems, sanitizeTodoPrefs } from './todoEngine';
+import { normalizeGuiScale } from './guiScale';
 
 export const Store = (() => {
   const K = {
     settings: 'foco.settings.v1',
     tasks: 'foco.tasks.v1',
+    todos: 'peakus.todos.v1',
+    todoPrefs: 'peakus.todo_prefs.v1',
     history: 'foco.history.v1',
     timer: 'foco.timer.v1',
     notes: 'foco.notes.v1',
@@ -89,6 +104,8 @@ export const Store = (() => {
       mm.posX = U.clamp(+mm.posX, 0, 100);
       mm.posY = U.clamp(+mm.posY, 0, 100);
       mm.keyTone = !!(raw?.modes?.[m]?.keyTone);
+      mm.kenBurns = !!(raw?.modes?.[m]?.kenBurns);
+      mm.shakeEffect = !!(raw?.modes?.[m]?.shakeEffect);
       if (Number.isNaN(mm.posX)) mm.posX = 50;
       if (Number.isNaN(mm.posY)) mm.posY = 50;
     }
@@ -108,6 +125,13 @@ export const Store = (() => {
     }
     if (typeof t.label !== 'string') t.label = DEFAULTS.timer.label;
     t.label = t.label.slice(0, 120);
+    t.hardcoreMode = !!t.hardcoreMode;
+    if (t.hardcoreMode) {
+      t.mode = 'pomodoro';
+      t.cycles = 4;
+      t.autoBreak = true;
+      t.autoFocus = true;
+    }
 
     const c = s.clock;
     if (!['12', '24'].includes(c.format)) c.format = '12';
@@ -118,10 +142,12 @@ export const Store = (() => {
     s.appearance.accent = U.normalizeHex(s.appearance.accent) || DEFAULTS.appearance.accent;
     if (!['auto', 'on', 'off'].includes(s.appearance.animation)) s.appearance.animation = 'auto';
     s.appearance.autoHideDelay = intIn(s.appearance.autoHideDelay, 2, 60, 5);
+    s.appearance.guiScale = normalizeGuiScale(raw?.appearance?.guiScale ?? s.appearance.guiScale);
 
     if (!['daily', 'hourly', 'visit'].includes(s.quotes.rotation)) s.quotes.rotation = 'daily';
     s.quotes.custom = String(s.quotes.custom || '').slice(0, 200);
     s.quotes.toxicMotivation = !!s.quotes.toxicMotivation;
+    s.quotes.godMode = !!s.quotes.godMode;
     s.name = String(s.name || '').slice(0, 40);
     s.sounds.master = intIn(s.sounds.master, 0, 100, 70);
 
@@ -145,12 +171,15 @@ export const Store = (() => {
         if (Number.isFinite(+v)) out.deleted[k] = +v;
       }
     }
-    for (const t of raw.items) {
+    for (let idx = 0; idx < raw.items.length; idx++) {
+      const t = raw.items[idx];
       if (!U.isObj(t) || typeof t.title !== 'string' || !t.title.trim()) continue;
       out.items.push({
         id: typeof t.id === 'string' ? t.id : U.uid('t'),
         title: t.title.slice(0, 200),
+        icon: typeof t.icon === 'string' && t.icon.trim() ? t.icon.trim().slice(0, 8) : '📋',
         done: !!t.done,
+        order: Number.isFinite(Number(t.order)) ? Number(t.order) : idx,
         createdAt: Number(t.createdAt) || Date.now(),
         doneAt: t.doneAt ? Number(t.doneAt) : null,
         updatedAt: Number(t.updatedAt) || Number(t.createdAt) || 0,
@@ -160,6 +189,10 @@ export const Store = (() => {
               .filter(x => U.isObj(x) && typeof x.title === 'string' && x.title.trim())
               .map(x => ({ id: typeof x.id === 'string' ? x.id : U.uid('s'), title: x.title.slice(0, 200), done: !!x.done }))
           : [],
+        linkedTodoId:
+          typeof t.linkedTodoId === 'string' && t.linkedTodoId.trim()
+            ? t.linkedTodoId.trim().slice(0, 80)
+            : null,
       });
     }
     out.activeId = out.items.some(t => t.id === raw.activeId) ? raw.activeId : null;
@@ -273,6 +306,10 @@ export const Store = (() => {
     saveNotes: (n: string, at = Date.now()) => write(K.notes, { text: String(n).slice(0, 20000), at }),
     loadFocusStats: (): Record<string, any> => read<Record<string, any>>(K.focusStats, {}),
     saveFocusStats: (stats: Record<string, any>) => write(K.focusStats, stats),
+    loadTodos: (): TodoItem[] => sanitizeTodoItems(read<unknown>(K.todos, [])),
+    saveTodos: (items: TodoItem[]) => write(K.todos, sanitizeTodoItems(items)),
+    loadTodoPrefs: (): TodoNotificationPrefs => sanitizeTodoPrefs(read<unknown>(K.todoPrefs, {})),
+    saveTodoPrefs: (prefs: TodoNotificationPrefs) => write(K.todoPrefs, sanitizeTodoPrefs(prefs)),
     normSettings,
     normTasks,
     normHistory,

@@ -92,7 +92,11 @@ export interface TranslationDictionary {
   
   // Notes popover
   notesTitle: string;
+  notepadTitle: string;
+  wordsLabel: string;
+  charactersLabel: string;
   notesPlaceholder: string;
+  notepadPlaceholder: string;
   notesSaved: string;
   notesSaving: string;
   clearNotes: string;
@@ -235,6 +239,8 @@ export interface TranslationDictionary {
   
   // Extras
   extrasSubtitle: string;
+  guiScaleTitle: string;
+  guiScaleDesc: string;
   autoHideTitle: string;
   autoHideDesc: string;
   autoHideDelay: string;
@@ -277,8 +283,11 @@ export interface TranslationDictionary {
 
   // Zen mode & Pomodoro presets
   zenMode: string;
+  zenModeDesc: string;
   exitZen: string;
   zenHint: string;
+  rooms: string;
+  roomsDesc: string;
   presetsTitle: string;
   presetsDesc: string;
   presetName: string;
@@ -296,10 +305,37 @@ export interface TranslationDictionary {
   continueFlowNo: string;
   flowAddedToast: string;
 
-  // Study Bot
+  // Study Bot & Tools
   studyBot: string;
   studyBotDesc: string;
   studyBotTitle: string;
+  tools: string;
+  calculator: string;
+  calculatorDesc: string;
+  notesDesc: string;
+  muteMusic: string;
+  unmuteMusic: string;
+  liveStream: string;
+  seekBack10: string;
+  seekForward10: string;
+  todoList: string;
+  todoListDesc: string;
+  betaLabel: string;
+
+  // Hardcore Mode & Skip Warnings
+  hardcoreMode: string;
+  hardcoreModeDesc: string;
+  skipWarningTitle: string;
+  skipWarningFocusDesc: string;
+  skipWarningBreakDesc: string;
+  skipAnyway: string;
+  keepFocusing: string;
+  quitHardcore: string;
+  quitReallyTitle: string;
+  quitReallyDesc: string;
+  quitConfirmYes: string;
+  hardcoreLockedBadge: string;
+  humiliationDismiss: string;
 }
 
 export const TRANSLATIONS: Record<LanguageCode, TranslationDictionary> = {
@@ -387,12 +423,16 @@ export const TRANSLATIONS: Record<LanguageCode, TranslationDictionary> = {
     
     // Notes popover
     notesTitle: 'Quick Notes',
+    notepadTitle: 'Notepad',
+    wordsLabel: 'words',
+    charactersLabel: 'characters',
     notesPlaceholder: 'Jot down thoughts, ideas, or distractions to review later...',
+    notepadPlaceholder: 'Start writing...',
     notesSaved: 'Saved',
     notesSaving: 'Saving...',
     clearNotes: 'Clear Notes',
     confirmClearNotesTitle: 'Clear all notes?',
-    confirmClearNotesDesc: 'All text in the quick notepad will be erased.',
+    confirmClearNotesDesc: 'All content in the notepad will be erased.',
     
     // Music Stream popover
     musicTitle: 'YouTube Music Stream',
@@ -530,6 +570,8 @@ export const TRANSLATIONS: Record<LanguageCode, TranslationDictionary> = {
     
     // Extras
     extrasSubtitle: 'Aesthetic controls, shortcuts, and credits.',
+    guiScaleTitle: 'GUI Scale',
+    guiScaleDesc: 'Minecraft-style interface scaling across HUD, docks, popovers, and panels.',
     autoHideTitle: 'Auto-hide Controls during Focus',
     autoHideDesc: 'Fades out buttons while timer is running so you can stay immersed.',
     autoHideDelay: 'Hide after inactivity',
@@ -572,8 +614,11 @@ export const TRANSLATIONS: Record<LanguageCode, TranslationDictionary> = {
 
     // Zen mode & Pomodoro presets
     zenMode: 'Zen Mode',
+    zenModeDesc: 'Hide all controls for distraction-free focus',
     exitZen: 'Exit Zen',
     zenHint: 'Only timer visible',
+    rooms: 'Rooms',
+    roomsDesc: 'Study together with synced timers & chat',
     presetsTitle: 'Custom Pomodoro Presets',
     presetsDesc: 'Configure 3 quick Pomodoro presets synced with your Cloud account.',
     presetName: 'Preset Name',
@@ -593,6 +638,33 @@ export const TRANSLATIONS: Record<LanguageCode, TranslationDictionary> = {
     studyBot: 'Study Bot',
     studyBotDesc: 'Instant answers without juggling tabs',
     studyBotTitle: 'Peakus Study Bot',
+    tools: 'Tools',
+    calculator: 'Calculator',
+    calculatorDesc: 'Quick standard & scientific math',
+    notesDesc: 'Scratchpad synced to your cloud',
+    muteMusic: 'Mute Stream',
+    unmuteMusic: 'Unmute Stream',
+    liveStream: 'LIVE',
+    seekBack10: 'Back 10s',
+    seekForward10: 'Forward 10s',
+    todoList: 'Todo List',
+    todoListDesc: 'Timed alerts with custom, default & toxic quotes',
+    betaLabel: 'BETA',
+
+    // Hardcore Mode & Skip Warnings
+    hardcoreMode: 'Hardcore Mode',
+    hardcoreModeDesc: 'Locks Auto-start Focus & Breaks ON (mandatory), disables pausing & skipping, and finishes only after 4 completed sessions.',
+    skipWarningTitle: 'Skip current interval?',
+    skipWarningFocusDesc: 'Skipping from Focus to Break does NOT count as a completed session and will NOT advance your session tally.',
+    skipWarningBreakDesc: 'Skipping this break returns you to Focus without counting a completed session.',
+    skipAnyway: 'Skip anyway',
+    keepFocusing: 'Keep going',
+    quitHardcore: 'Quit',
+    quitReallyTitle: 'Really?',
+    quitReallyDesc: 'You can only finish Hardcore Mode by completing 4 focus sessions. Are you sure you want to quit?',
+    quitConfirmYes: 'Yes',
+    hardcoreLockedBadge: 'Mandatory',
+    humiliationDismiss: 'Back to Normal Mode',
   },
 
   ta: {
@@ -679,7 +751,11 @@ export const TRANSLATIONS: Record<LanguageCode, TranslationDictionary> = {
     
     // Notes popover
     notesTitle: 'விரைவுக் குறிப்புகள்',
+    notepadTitle: 'நோட்பேட்',
+    wordsLabel: 'சொற்கள்',
+    charactersLabel: 'எழுத்துக்கள்',
     notesPlaceholder: 'கவனம் சிதறாமல் இருக்க நினைவில் தோன்றுவதை இங்கே உடனே குறித்து வையுங்கள்...',
+    notepadPlaceholder: 'எழுதத் தொடங்குங்கள்...',
     notesSaved: 'சேமிக்கப்பட்டது',
     notesSaving: 'சேமிக்கிறது...',
     clearNotes: 'குறிப்புகளை நீக்கு',
@@ -822,6 +898,8 @@ export const TRANSLATIONS: Record<LanguageCode, TranslationDictionary> = {
     
     // Extras
     extrasSubtitle: 'அழகியல் கட்டுப்பாடுகள், குறுக்குவழிகள் மற்றும் தயாரிப்பாளர் விவரம்.',
+    guiScaleTitle: 'GUI அளவு (GUI Scale)',
+    guiScaleDesc: 'Minecraft போன்று திரை அளவிற்கேற்ப HUD, பட்டன்கள் மற்றும் பலகைகளை மாற்றவும்.',
     autoHideTitle: 'படிக்கையில் கட்டுப்பாடுகளை மறை',
     autoHideDesc: 'கவனம் சிதறாமல் இருக்க பொத்தான்கள் தானாக மறையும்.',
     autoHideDelay: 'மறைக்க வேண்டிய காலதாமதம்',
@@ -864,8 +942,11 @@ export const TRANSLATIONS: Record<LanguageCode, TranslationDictionary> = {
 
     // Zen mode & Pomodoro presets
     zenMode: 'ஜென் பயன்முறை',
+    zenModeDesc: 'கவனச்சிதறலின்றி படிக்க திரைப் பொத்தான்களை மறைக்கும்',
     exitZen: 'ஜென் விலகு',
     zenHint: 'நேரமானி மட்டுமே தெரியும்',
+    rooms: 'படிப்பு அறைகள்',
+    roomsDesc: 'நண்பர்களுடன் இணைந்து படிக்கவும் & உரையாடவும்',
     presetsTitle: 'பொமடோரோ முன்னமைவுகள் (Custom Presets)',
     presetsDesc: '3 தனிப்பயன் பொமடோரோ நேர அளவுகளை உங்கள் உலாவியில் சேமித்துக் கொள்ளலாம்.',
     presetName: 'முன்னமைவு பெயர்',
@@ -885,6 +966,33 @@ export const TRANSLATIONS: Record<LanguageCode, TranslationDictionary> = {
     studyBot: 'படிப்பு போட்',
     studyBotDesc: 'தாவல்களை மாற்றாமல் உடனடி பதில்கள்',
     studyBotTitle: 'பீக்கஸ் படிப்பு போட்',
+    tools: 'கருவிகள்',
+    calculator: 'கணிப்பான்',
+    calculatorDesc: 'சாதாரண & அறிவியல் கணக்கீடுகள்',
+    notesDesc: 'உடனுக்குடன் சேமிக்கப்படும் குறிப்புகள்',
+    muteMusic: 'ஒலியை முடக்கு',
+    unmuteMusic: 'ஒலியை இயக்கு',
+    liveStream: 'நேரலை',
+    seekBack10: '10 விநாடி பின்',
+    seekForward10: '10 விநாடி முன்',
+    todoList: 'செய்ய வேண்டியவை',
+    todoListDesc: 'பொன்மொழி நினைவூட்டல்களுடன் கூடிய பட்டியல்',
+    betaLabel: 'BETA',
+
+    // Hardcore Mode & Skip Warnings
+    hardcoreMode: 'ஹார்ட்கோர் முறை (Hardcore Mode)',
+    hardcoreModeDesc: 'கவனம் & இடைவேளை தானாகத் தொடங்குதல் கட்டாயமாக பூட்டப்படும்; இடைநிறுத்தம் & தவிர்த்தல் முடக்கப்படும்; 4 அமர்வுகள் முடிந்தால் மட்டுமே நிறைவடையும்.',
+    skipWarningTitle: 'தற்போதைய பகுதியைத் தவிர்க்கவா?',
+    skipWarningFocusDesc: 'கவனத்தைத் தவிர்த்து இடைவேளைக்குச் சென்றால் இது முடிந்த அமர்வாகக் கணக்கிடப்படாது; சுழற்சி எண்ணிக்கையும் உயராது.',
+    skipWarningBreakDesc: 'இந்த இடைவேளையைத் தவிர்த்தால் முடிந்த அமர்வாகக் கணக்கிடப்படாமல் அடுத்த கவனப் பகுதிக்குச் செல்லும்.',
+    skipAnyway: 'தவிர்த்துச் செல்',
+    keepFocusing: 'தொடர்ந்து படி',
+    quitHardcore: 'வெளியேறு',
+    quitReallyTitle: 'நிஜமாவா?',
+    quitReallyDesc: '4 கவன அமர்வுகளை முடித்தால் மட்டுமே ஹார்ட்கோர் முறையை வெல்ல முடியும். வெளியேற விரும்புகிறீர்களா?',
+    quitConfirmYes: 'ஆம்',
+    hardcoreLockedBadge: 'கட்டாயம்',
+    humiliationDismiss: 'சாதாரண முறைக்குத் திரும்பு',
   },
 
   es: {
@@ -971,12 +1079,16 @@ export const TRANSLATIONS: Record<LanguageCode, TranslationDictionary> = {
     
     // Notes popover
     notesTitle: 'Notas rápidas',
+    notepadTitle: 'Bloc de notas',
+    wordsLabel: 'palabras',
+    charactersLabel: 'caracteres',
     notesPlaceholder: 'Anotá dudas, fórmulas o lo que te distraiga para volver después...',
+    notepadPlaceholder: 'Empezá a escribir...',
     notesSaved: 'Guardado',
     notesSaving: 'Guardando...',
     clearNotes: 'Borrar notas',
     confirmClearNotesTitle: '¿Borrar las notas?',
-    confirmClearNotesDesc: 'Se elimina todo el texto del bloc de notas.',
+    confirmClearNotesDesc: 'Se elimina todo el contenido del bloc de notas.',
     
     // Music Stream popover
     musicTitle: 'Música en vivo de YouTube',
@@ -1114,6 +1226,8 @@ export const TRANSLATIONS: Record<LanguageCode, TranslationDictionary> = {
     
     // Extras
     extrasSubtitle: 'Detalles para concentrarte mejor.',
+    guiScaleTitle: 'Escala de interfaz (GUI Scale)',
+    guiScaleDesc: 'Escalá la interfaz al estilo Minecraft: HUD, barra inferior, paneles y menús.',
     autoHideTitle: 'Ocultar controles al concentrarte',
     autoHideDesc: 'Con el temporizador corriendo, los controles se desvanecen.',
     autoHideDelay: 'Ocultar después de inactividad',
@@ -1156,8 +1270,11 @@ export const TRANSLATIONS: Record<LanguageCode, TranslationDictionary> = {
 
     // Zen mode & Pomodoro presets
     zenMode: 'Modo Zen',
+    zenModeDesc: 'Ocultá los controles para enfocarte sin distracciones',
     exitZen: 'Salir de Zen',
     zenHint: 'Solo temporizador visible',
+    rooms: 'Salas',
+    roomsDesc: 'Estudiá en grupo con temporizador y chat en vivo',
     presetsTitle: 'Preajustes Pomodoro Personalizados',
     presetsDesc: 'Configurá 3 combinaciones rápidas de Pomodoro guardadas en tu navegador.',
     presetName: 'Nombre del preajuste',
@@ -1177,6 +1294,33 @@ export const TRANSLATIONS: Record<LanguageCode, TranslationDictionary> = {
     studyBot: 'Bot de Estudio',
     studyBotDesc: 'Respuestas instantáneas sin cambiar de pestañas',
     studyBotTitle: 'Bot de Estudio Peakus',
+    tools: 'Herramientas',
+    calculator: 'Calculadora',
+    calculatorDesc: 'Cálculos estándar y científicos',
+    notesDesc: 'Notas rápidas sincronizadas en la nube',
+    muteMusic: 'Silenciar música',
+    unmuteMusic: 'Activar sonido',
+    liveStream: 'EN VIVO',
+    seekBack10: 'Retroceder 10s',
+    seekForward10: 'Adelantar 10s',
+    todoList: 'Lista Todo',
+    todoListDesc: 'Recordatorios con frases personalizadas o tóxicas',
+    betaLabel: 'BETA',
+
+    // Hardcore Mode & Skip Warnings
+    hardcoreMode: 'Modo Hardcore',
+    hardcoreModeDesc: 'Bloquea inicio automático de Foco y Descansos (obligatorio), desactiva pausar y saltar, y solo termina al completar 4 sesiones.',
+    skipWarningTitle: '¿Saltar esta etapa?',
+    skipWarningFocusDesc: 'Saltar de Foco a Descanso NO cuenta como sesión completada y NO avanza tu marcador de sesiones.',
+    skipWarningBreakDesc: 'Saltar este descanso vuelve al Foco sin sumar una sesión completada.',
+    skipAnyway: 'Saltar igual',
+    keepFocusing: 'Seguir',
+    quitHardcore: 'Rendirse',
+    quitReallyTitle: '¿En serio?',
+    quitReallyDesc: 'Solo podés terminar el Modo Hardcore completando 4 sesiones de foco. ¿Seguro que querés abandonar?',
+    quitConfirmYes: 'Sí',
+    hardcoreLockedBadge: 'Obligatorio',
+    humiliationDismiss: 'Volver al modo normal',
   },
 };
 

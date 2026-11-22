@@ -298,105 +298,109 @@ export const Background: React.FC<BackgroundProps> = ({ settings, onUpdateModeBg
   return (
     <div className="bg" style={{ backgroundColor: baseBg }} aria-hidden="true">
       <div ref={wrapRef} className="bg-wrap" style={wrapStyle}>
-        {/* YouTube background video if selected */}
-        {bg.kind === 'youtube' && bg.youtubeId && (
-          <div
-            className="absolute inset-0 overflow-hidden pointer-events-none flex items-center justify-center"
-            style={{ zIndex: 1 }}
-          >
-            {/* High-res YouTube thumbnail as instant backdrop / fallback */}
-            <div
-              className="absolute inset-0 bg-cover bg-center"
-              style={{
-                backgroundImage: `url("https://img.youtube.com/vi/${bg.youtubeId}/maxresdefault.jpg"), url("https://img.youtube.com/vi/${bg.youtubeId}/hqdefault.jpg")`,
-              }}
-            />
-            <iframe
-              src={buildBackgroundEmbedUrl(bg.youtubeId)}
-              title={bg.youtubeTitle || 'YouTube Background Video'}
-              className="pointer-events-none border-0"
-              style={{
-                width: '100vw',
-                height: '56.25vw',
-                minHeight: '100vh',
-                minWidth: '177.77vh',
-                position: 'absolute',
-                top: '50%',
-                left: '50%',
-                transform: 'translate(-50%, -50%)',
-              }}
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-              referrerPolicy="strict-origin-when-cross-origin"
-            />
-          </div>
-        )}
+        <div className={`bg-motion-zoom${cfg.kenBurns ? ' on' : ''}`}>
+          <div className={`bg-motion-shake${cfg.shakeEffect ? ' on' : ''}`}>
+            {/* YouTube background video if selected */}
+            {bg.kind === 'youtube' && bg.youtubeId && (
+              <div
+                className="absolute inset-0 overflow-hidden pointer-events-none flex items-center justify-center"
+                style={{ zIndex: 1 }}
+              >
+                {/* High-res YouTube thumbnail as instant backdrop / fallback */}
+                <div
+                  className="absolute inset-0 bg-cover bg-center"
+                  style={{
+                    backgroundImage: `url("https://img.youtube.com/vi/${bg.youtubeId}/maxresdefault.jpg"), url("https://img.youtube.com/vi/${bg.youtubeId}/hqdefault.jpg")`,
+                  }}
+                />
+                <iframe
+                  src={buildBackgroundEmbedUrl(bg.youtubeId)}
+                  title={bg.youtubeTitle || 'YouTube Background Video'}
+                  className="pointer-events-none border-0"
+                  style={{
+                    width: '100vw',
+                    height: '56.25vw',
+                    minHeight: '100vh',
+                    minWidth: '177.77vh',
+                    position: 'absolute',
+                    top: '50%',
+                    left: '50%',
+                    transform: 'translate(-50%, -50%)',
+                  }}
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                  referrerPolicy="strict-origin-when-cross-origin"
+                />
+              </div>
+            )}
 
-        {/* Uploaded local video background if selected */}
-        {bg.kind === 'videoUpload' && uploadedVideoUrl && (
-          <div
-            className="absolute inset-0 overflow-hidden pointer-events-none"
-            style={{ zIndex: 1 }}
-          >
-            <video
-              ref={videoElRef}
-              key={uploadedVideoUrl}
-              autoPlay
-              loop
-              muted
-              playsInline
-              preload="auto"
-              src={uploadedVideoUrl}
-              className="absolute inset-0 w-full h-full object-cover"
-              onCanPlay={e => {
-                e.currentTarget.muted = true;
-                e.currentTarget.play().catch(() => {});
-              }}
-              onError={() => {
-                console.warn('Uploaded video failed to play');
-                if (onErrorToast) onErrorToast('Could not play uploaded video file.');
-                if (onUpdateModeBg) onUpdateModeBg(mode, clone(DEFAULTS.modes[mode].bg));
-              }}
-            />
-          </div>
-        )}
+            {/* Uploaded local video background if selected */}
+            {bg.kind === 'videoUpload' && uploadedVideoUrl && (
+              <div
+                className="absolute inset-0 overflow-hidden pointer-events-none"
+                style={{ zIndex: 1 }}
+              >
+                <video
+                  ref={videoElRef}
+                  key={uploadedVideoUrl}
+                  autoPlay
+                  loop
+                  muted
+                  playsInline
+                  preload="auto"
+                  src={uploadedVideoUrl}
+                  className="absolute inset-0 w-full h-full object-cover"
+                  onCanPlay={e => {
+                    e.currentTarget.muted = true;
+                    e.currentTarget.play().catch(() => {});
+                  }}
+                  onError={() => {
+                    console.warn('Uploaded video failed to play');
+                    if (onErrorToast) onErrorToast('Could not play uploaded video file.');
+                    if (onUpdateModeBg) onUpdateModeBg(mode, clone(DEFAULTS.modes[mode].bg));
+                  }}
+                />
+              </div>
+            )}
 
-        {/* Direct video URL background if selected */}
-        {bg.kind === 'videoUrl' && bg.videoUrl && (
-          <div
-            className="absolute inset-0 overflow-hidden pointer-events-none"
-            style={{ zIndex: 1 }}
-          >
-            <video
-              ref={videoElRef}
-              key={bg.videoUrl}
-              autoPlay
-              loop
-              muted
-              playsInline
-              preload="auto"
-              src={bg.videoUrl}
-              className="absolute inset-0 w-full h-full object-cover"
-              onCanPlay={e => {
-                e.currentTarget.muted = true;
-                e.currentTarget.play().catch(() => {});
-              }}
-              onError={() => {
-                console.warn('Direct video URL failed to play:', bg.videoUrl);
-                if (onErrorToast) onErrorToast('Could not play video link. Reverted to scenic background.');
-                if (onUpdateModeBg) onUpdateModeBg(mode, clone(DEFAULTS.modes[mode].bg));
-              }}
-            />
-          </div>
-        )}
+            {/* Direct video URL background if selected */}
+            {bg.kind === 'videoUrl' && bg.videoUrl && (
+              <div
+                className="absolute inset-0 overflow-hidden pointer-events-none"
+                style={{ zIndex: 1 }}
+              >
+                <video
+                  ref={videoElRef}
+                  key={bg.videoUrl}
+                  autoPlay
+                  loop
+                  muted
+                  playsInline
+                  preload="auto"
+                  src={bg.videoUrl}
+                  className="absolute inset-0 w-full h-full object-cover"
+                  onCanPlay={e => {
+                    e.currentTarget.muted = true;
+                    e.currentTarget.play().catch(() => {});
+                  }}
+                  onError={() => {
+                    console.warn('Direct video URL failed to play:', bg.videoUrl);
+                    if (onErrorToast) onErrorToast('Could not play video link. Reverted to scenic background.');
+                    if (onUpdateModeBg) onUpdateModeBg(mode, clone(DEFAULTS.modes[mode].bg));
+                  }}
+                />
+              </div>
+            )}
 
-        {/* Static scene or image layers (only shown when not a video/embed) */}
-        {!isVideoOrEmbed && (
-          <>
-            <div ref={layer0Ref} className="bg-layer on" />
-            <div ref={layer1Ref} className="bg-layer" />
-            <canvas ref={canvasRef} className="bg-fx" />
-          </>
-        )}
+            {/* Static scene or image layers (only shown when not a video/embed) */}
+            {!isVideoOrEmbed && (
+              <>
+                <div ref={layer0Ref} className="bg-layer on" />
+                <div ref={layer1Ref} className="bg-layer" />
+                <canvas ref={canvasRef} className="bg-fx" />
+              </>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Dim overlay and ambient shade */}

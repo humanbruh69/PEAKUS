@@ -53,6 +53,7 @@ export const ProPrankModal: React.FC<ProPrankModalProps> = ({
         role="dialog"
         aria-modal="true"
         aria-label="Welcome to Peakus"
+        className="gui-scaled-modal"
         style={{
           position: 'fixed',
           top: '50%',

@@ -3,6 +3,7 @@ import { Icon } from './Icons';
 import { Task, TimerState, LanguageCode } from '../types';
 import { t } from '../lib/i18n';
 import { Store } from '../lib/store';
+import { appendLineToRichNotes } from '../lib/notesEngine';
 
 export type StudyBotMode = 'standard' | 'fast' | 'deep';
 
@@ -316,11 +317,11 @@ export const StudyBotPopover: React.FC<StudyBotPopoverProps> = ({
   const handleSaveToNotes = (content: string) => {
     const existing = Store.loadNotesDoc();
     const dateStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    const noteEntry = `\n\n--- 🤖 Study Bot Note (${dateStr}) ---\n${content.trim()}\n`;
-    const updated = (existing.text || '') + noteEntry;
+    const noteEntry = `Study Bot Note (${dateStr})\n${content.trim()}`;
+    const updated = appendLineToRichNotes(existing.text || '', noteEntry);
     Store.saveNotes(updated, Date.now());
     if (onAppendToNotes) onAppendToNotes(updated);
-    onToast('Saved directly to Peakus Notes! 📝');
+    onToast('Saved directly to Peakus Notes!');
   };
 
   // Render markdown formatting
@@ -489,8 +490,8 @@ export const StudyBotPopover: React.FC<StudyBotPopoverProps> = ({
       }}
     >
       <div
-        className="w-full max-w-2xl bg-[#12131a]/95 border border-white/10 rounded-2xl shadow-2xl flex flex-col overflow-hidden text-white animate-scaleUp"
-        style={{ height: '88vh', maxHeight: '780px' }}
+        className="gui-scaled-modal w-full max-w-2xl bg-[#12131a]/95 border border-white/10 rounded-2xl shadow-2xl flex flex-col overflow-hidden text-white animate-scaleUp"
+        style={{ height: 'calc(88vh / var(--gui-scale, 1))', maxHeight: 'min(780px, calc(92vh / var(--gui-scale, 1)))' }}
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}

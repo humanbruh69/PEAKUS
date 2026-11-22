@@ -9,6 +9,7 @@ interface AmbientTimerProps {
   onToggleTimer: () => void;
   onResetTimer: () => void;
   onSkipTimer: () => void;
+  onRequestQuitHardcore?: () => void;
   lang: string;
   settings: Settings;
   zenMode: boolean;
@@ -21,6 +22,7 @@ export const AmbientTimer: React.FC<AmbientTimerProps> = ({
   onToggleTimer,
   onResetTimer,
   onSkipTimer,
+  onRequestQuitHardcore,
   lang,
   settings,
   zenMode,
@@ -44,15 +46,23 @@ export const AmbientTimer: React.FC<AmbientTimerProps> = ({
   const dragRef = useRef<{ startX: number; startY: number; initX: number; initY: number } | null>(null);
   const elementRef = useRef<HTMLDivElement>(null);
 
+  const readGuiScale = () => {
+    const raw = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--gui-scale'));
+    return Number.isFinite(raw) && raw > 0 ? raw : 1;
+  };
+
   // Clamp position to viewport bounds on resize
   useEffect(() => {
     const handleResize = () => {
+      const scale = readGuiScale();
       setPosition(prev => {
         const el = elementRef.current;
         const w = el ? el.offsetWidth : 220;
         const h = el ? el.offsetHeight : 120;
-        const clampedX = Math.max(12, Math.min(window.innerWidth - w - 12, prev.x));
-        const clampedY = Math.max(12, Math.min(window.innerHeight - h - 12, prev.y));
+        const maxX = Math.max(12, window.innerWidth / scale - w - 12);
+        const maxY = Math.max(12, window.innerHeight / scale - h - 12);
+        const clampedX = Math.max(12, Math.min(maxX, prev.x));
+        const clampedY = Math.max(12, Math.min(maxY, prev.y));
         return { x: clampedX, y: clampedY };
       });
     };
@@ -78,14 +88,17 @@ export const AmbientTimer: React.FC<AmbientTimerProps> = ({
 
   const handlePointerMove = (e: React.PointerEvent) => {
     if (!isDragging || !dragRef.current) return;
-    const deltaX = e.clientX - dragRef.current.startX;
-    const deltaY = e.clientY - dragRef.current.startY;
+    const scale = readGuiScale();
+    const deltaX = (e.clientX - dragRef.current.startX) / scale;
+    const deltaY = (e.clientY - dragRef.current.startY) / scale;
     const el = elementRef.current;
     const w = el ? el.offsetWidth : 220;
     const h = el ? el.offsetHeight : 120;
 
-    const newX = Math.max(8, Math.min(window.innerWidth - w - 8, dragRef.current.initX + deltaX));
-    const newY = Math.max(8, Math.min(window.innerHeight - h - 8, dragRef.current.initY + deltaY));
+    const maxX = Math.max(8, window.innerWidth / scale - w - 8);
+    const maxY = Math.max(8, window.innerHeight / scale - h - 8);
+    const newX = Math.max(8, Math.min(maxX, dragRef.current.initX + deltaX));
+    const newY = Math.max(8, Math.min(maxY, dragRef.current.initY + deltaY));
 
     setPosition({ x: newX, y: newY });
   };
@@ -108,10 +121,13 @@ export const AmbientTimer: React.FC<AmbientTimerProps> = ({
       : t('phaseLong', lang as any);
 
   const isRunning = timerState.status === 'running';
+  const hardcoreMode = !!settings.timer.hardcoreMode;
+  const pauseLocked = hardcoreMode && isRunning;
 
   return (
     <div
       ref={elementRef}
+      className="gui-scaled"
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
@@ -173,6 +189,43 @@ export const AmbientTimer: React.FC<AmbientTimerProps> = ({
           >
             {phaseLabel}
           </span>
+          {hardcoreMode && (
+            <>
+              <span
+                style={{
+                  fontSize: '9.5px',
+                  fontWeight: 800,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.06em',
+                  padding: '1px 6px',
+                  borderRadius: '999px',
+                  background: 'rgba(244, 63, 94, 0.18)',
+                  border: '1px solid rgba(244, 63, 94, 0.4)',
+                  color: '#fda4af',
+                }}
+              >
+                HC {Math.min(4, Math.max(0, timerState.cycle))}/4
+              </span>
+              {onRequestQuitHardcore && (
+                <button
+                  type="button"
+                  onClick={onRequestQuitHardcore}
+                  style={{
+                    fontSize: '9.5px',
+                    fontWeight: 700,
+                    padding: '1px 6px',
+                    borderRadius: '999px',
+                    background: 'rgba(255, 255, 255, 0.08)',
+                    border: '1px solid rgba(244, 63, 94, 0.35)',
+                    color: '#fecdd3',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {t('quitHardcore', lang as any)}
+                </button>
+              )}
+            </>
+          )}
         </div>
 
         {/* Drag handle dots */}
@@ -223,19 +276,31 @@ export const AmbientTimer: React.FC<AmbientTimerProps> = ({
           type="button"
           onClick={onToggleTimer}
           aria-label={isRunning ? t('pause', lang as any) : t('start', lang as any)}
+          aria-disabled={pauseLocked}
+          title={
+            pauseLocked
+              ? `${t('hardcoreMode', lang as any)}: Pausing disabled`
+              : isRunning
+              ? t('pause', lang as any)
+              : t('start', lang as any)
+          }
           style={{
             width: '32px',
             height: '32px',
             borderRadius: '50%',
             background: isRunning ? 'rgba(255, 255, 255, 0.14)' : 'var(--accent)',
-            color: '#fff',
+            color: pauseLocked ? '#fda4af' : '#fff',
+            opacity: pauseLocked ? 0.42 : 1,
             display: 'grid',
             placeItems: 'center',
-            cursor: 'pointer',
-            border: 'none',
+            cursor: pauseLocked ? 'not-allowed' : 'pointer',
+            border: pauseLocked ? '1px solid rgba(244, 63, 94, 0.4)' : 'none',
             transition: 'transform 0.15s, background 0.15s',
           }}
-          onMouseEnter={e => (e.currentTarget.style.transform = 'scale(1.08)')}
+          onMouseEnter={e => {
+            if (pauseLocked) return;
+            e.currentTarget.style.transform = 'scale(1.08)';
+          }}
           onMouseLeave={e => (e.currentTarget.style.transform = 'scale(1)')}
         >
           <Icon name={isRunning ? 'pause' : 'play'} style={{ width: '14px', height: '14px' }} />
@@ -274,20 +339,23 @@ export const AmbientTimer: React.FC<AmbientTimerProps> = ({
           type="button"
           onClick={onSkipTimer}
           aria-label={t('skip', lang as any)}
-          title="Skip"
+          aria-disabled={hardcoreMode}
+          title={hardcoreMode ? `${t('hardcoreMode', lang as any)}: Skipping disabled` : 'Skip'}
           style={{
             width: '28px',
             height: '28px',
             borderRadius: '50%',
             background: 'rgba(255, 255, 255, 0.08)',
             color: 'var(--muted)',
+            opacity: hardcoreMode ? 0.38 : 1,
             display: 'grid',
             placeItems: 'center',
-            cursor: 'pointer',
+            cursor: hardcoreMode ? 'not-allowed' : 'pointer',
             border: 'none',
             transition: 'all 0.15s',
           }}
           onMouseEnter={e => {
+            if (hardcoreMode) return;
             e.currentTarget.style.color = '#fff';
             e.currentTarget.style.background = 'rgba(255, 255, 255, 0.15)';
           }}

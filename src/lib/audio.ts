@@ -436,6 +436,61 @@ export const AudioX = (() => {
       setTimeout(() => g.disconnect(), 6000);
       return true;
     },
+    playMessagePing(volume = 55) {
+      const c = ensure();
+      if (!c) return false;
+      const t = c.currentTime + 0.02;
+      const masterGain = c.createGain();
+      masterGain.gain.value = U.clamp(volume, 0, 100) / 100;
+
+      // Warm low-pass filter for Discord-style muted wooden/bubble pop
+      const lp = c.createBiquadFilter();
+      lp.type = 'lowpass';
+      lp.frequency.value = 2800;
+      lp.Q.value = 0.7;
+
+      masterGain.connect(lp);
+      lp.connect(c.destination);
+
+      const pop = (startTime: number, freq: number, gainPeak: number, decay: number) => {
+        const osc = c.createOscillator();
+        const g = c.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq * 0.9, startTime);
+        osc.frequency.exponentialRampToValueAtTime(freq, startTime + 0.014);
+        g.gain.setValueAtTime(0.0001, startTime);
+        g.gain.exponentialRampToValueAtTime(gainPeak, startTime + 0.005);
+        g.gain.exponentialRampToValueAtTime(0.0001, startTime + decay);
+        osc.connect(g);
+        g.connect(masterGain);
+        osc.start(startTime);
+        osc.stop(startTime + decay + 0.02);
+
+        const harm = c.createOscillator();
+        const hg = c.createGain();
+        harm.type = 'triangle';
+        harm.frequency.setValueAtTime(freq * 2, startTime);
+        hg.gain.setValueAtTime(0.0001, startTime);
+        hg.gain.exponentialRampToValueAtTime(gainPeak * 0.22, startTime + 0.003);
+        hg.gain.exponentialRampToValueAtTime(0.0001, startTime + 0.032);
+        harm.connect(hg);
+        hg.connect(masterGain);
+        harm.start(startTime);
+        harm.stop(startTime + 0.04);
+      };
+
+      // Snappy rising two-note Discord-style pop (C5 -> G5, 75ms apart)
+      pop(t, 523.25, 0.36, 0.095);
+      pop(t + 0.075, 783.99, 0.42, 0.14);
+
+      setTimeout(() => {
+        try {
+          masterGain.disconnect();
+          lp.disconnect();
+        } catch {}
+      }, 1200);
+      return true;
+    },
     toggle(id: string) {
       channels[id] ? this.stop(id) : this.play(id);
     },

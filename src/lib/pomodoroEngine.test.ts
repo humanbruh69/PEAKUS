@@ -18,6 +18,12 @@ import {
   getPhaseDurationMs,
   toTimerPhase,
   fromTimerPhase,
+  formatWholeSessionResetToast,
+  canSkipPhase,
+  canPauseTimer,
+  shouldLogResetFocus,
+  enforceHardcoreSettings,
+  HARDCORE_REQUIRED_SESSIONS,
 } from './pomodoroEngine';
 
 const TEST_SETTINGS: PomodoroSettings = {
@@ -28,6 +34,7 @@ const TEST_SETTINGS: PomodoroSettings = {
   selectedTallyIcon: 'growing_tree',
   autoStartBreaks: false,
   autoStartFocus: false,
+  hardcoreMode: false,
 };
 
 test('initial PomodoroState starts with phase FOCUS and cycleTally 0', () => {
@@ -103,6 +110,16 @@ test('when FOCUS finishes: increments cycleTally, logs daily stats, transitions 
   assert.equal(dayStats.sessionCount, 1);
   assert.equal(dayStats.focusMs, 25 * 60 * 1000);
   assert.equal(dayStats.focusMinutes, 25);
+});
+
+test('when FOCUS is skipped in normal mode: transitions to break WITHOUT incrementing cycleTally', () => {
+  const now = new Date('2026-11-11T10:00:00Z').getTime();
+  const state = createInitialPomodoroState(TEST_SETTINGS, 1);
+  const skipped = skipPhase(state, TEST_SETTINGS, now);
+
+  assert.equal(skipped.phase, 'SHORT_BREAK');
+  assert.equal(skipped.cycleTally, 1);
+  assert.equal(skipped.status, 'idle');
 });
 
 test('when SHORT_BREAK finishes or is skipped: transitions to FOCUS without changing cycleTally', () => {
@@ -248,7 +265,7 @@ test('phase mapping helpers convert between PomodoroPhase and legacy timer phase
   assert.equal(fromTimerPhase('long'), 'LONG_BREAK');
 });
 
-test('resetSegmentSavingFocus saves elapsed focus time to daily stats and preserves cycleTally', () => {
+test('resetSegmentSavingFocus saves elapsed focus time to daily stats and preserves cycleTally in normal mode', () => {
   const baseTime = new Date('2026-11-12T10:00:00Z').getTime();
   const dateKey = toLocalDateKey(baseTime);
   const initial = {
@@ -256,12 +273,12 @@ test('resetSegmentSavingFocus saves elapsed focus time to daily stats and preser
   };
   const started = startTimer(initial, baseTime);
 
-  // User focuses for 12 minutes (720,000ms), then clicks "Reset this part"
-  const resetAt = baseTime + 12 * 60 * 1000;
+  // User focuses for 5 minutes (300,000ms), then resets this part
+  const resetAt = baseTime + 5 * 60 * 1000;
   const res = resetSegmentSavingFocus(started, TEST_SETTINGS, {}, resetAt);
 
-  assert.equal(res.savedFocusMs, 12 * 60 * 1000);
-  assert.equal(res.nextStats[dateKey].focusMinutes, 12);
+  assert.equal(res.savedFocusMs, 5 * 60 * 1000);
+  assert.equal(res.nextStats[dateKey].focusMinutes, 5);
   assert.equal(res.nextState.cycleTally, 2);
   assert.equal(res.nextState.phase, 'FOCUS');
   assert.equal(res.nextState.status, 'idle');
@@ -269,7 +286,7 @@ test('resetSegmentSavingFocus saves elapsed focus time to daily stats and preser
   assert.equal(res.nextState.targetEndTime, null);
 });
 
-test('resetWholeSessionSavingFocus saves elapsed focus time and resets cycleTally to 0', () => {
+test('resetWholeSessionSavingFocus saves elapsed focus time and resets cycleTally to 0 in normal mode', () => {
   const baseTime = new Date('2026-11-12T10:00:00Z').getTime();
   const dateKey = toLocalDateKey(baseTime);
   const initial = {
@@ -287,6 +304,42 @@ test('resetWholeSessionSavingFocus saves elapsed focus time and resets cycleTall
   assert.equal(res.nextState.phase, 'FOCUS');
   assert.equal(res.nextState.status, 'idle');
   assert.equal(res.nextState.remainingMs, 25 * 60 * 1000);
+});
+
+test('Hardcore Mode blocks skipping and pausing and discards elapsed focus time on reset without logging stats', () => {
+  const hardcore: PomodoroSettings = { ...TEST_SETTINGS, hardcoreMode: true };
+  assert.equal(canSkipPhase(hardcore), false);
+  assert.equal(canPauseTimer(hardcore), false);
+  assert.equal(shouldLogResetFocus(hardcore), false);
+
+  const baseTime = new Date('2026-11-12T10:00:00Z').getTime();
+  const initial = createInitialPomodoroState(hardcore, 1);
+  const started = startTimer(initial, baseTime);
+
+  // Pausing in hardcore mode leaves timer running and targetEndTime intact
+  const afterPauseAttempt = pauseTimer(started, baseTime + 5000, hardcore);
+  assert.equal(afterPauseAttempt.status, 'running');
+  assert.equal(afterPauseAttempt.targetEndTime, started.targetEndTime);
+  assert.equal(afterPauseAttempt.remainingMs, started.remainingMs);
+
+  // Skipping in hardcore mode leaves state untouched
+  const afterSkipAttempt = skipPhase(started, hardcore, baseTime + 10000);
+  assert.equal(afterSkipAttempt.phase, 'FOCUS');
+  assert.equal(afterSkipAttempt.status, 'running');
+  assert.equal(afterSkipAttempt.cycleTally, 1);
+
+  // Resetting after 5 minutes in hardcore mode discards stats
+  const resetAt = baseTime + 5 * 60 * 1000;
+  const segReset = resetSegmentSavingFocus(started, hardcore, {}, resetAt);
+  assert.equal(segReset.savedFocusMs, 0);
+  assert.deepEqual(segReset.nextStats, {});
+  assert.equal(segReset.nextState.status, 'idle');
+  assert.equal(segReset.nextState.cycleTally, 1);
+
+  const wholeReset = resetWholeSessionSavingFocus(started, hardcore, {}, resetAt);
+  assert.equal(wholeReset.savedFocusMs, 0);
+  assert.deepEqual(wholeReset.nextStats, {});
+  assert.equal(wholeReset.nextState.cycleTally, 0);
 });
 
 test('Flow mode extendFlowFocus sets drift-free 10m targetEndTime and takeBreakFromFlow starts break immediately', () => {
@@ -310,3 +363,66 @@ test('Flow mode extendFlowFocus sets drift-free 10m targetEndTime and takeBreakF
   assert.equal(breakState.durationMs, 5 * 60 * 1000);
   assert.equal(breakState.targetEndTime, now + 5000 + 5 * 60 * 1000);
 });
+
+test('formatWholeSessionResetToast reports completed cycles before reset (e.g. 3/4 -> 0/4)', () => {
+  const fmt = (ms: number) => `${Math.round(ms / 60000)}m`;
+  assert.equal(
+    formatWholeSessionResetToast(3, 4, 0, fmt),
+    'Whole session reset (3/4 → 0/4).'
+  );
+  assert.equal(
+    formatWholeSessionResetToast(3, 4, 5 * 60 * 1000, fmt),
+    'Whole session reset (3/4 → 0/4 · 5m focus saved).'
+  );
+  assert.equal(
+    formatWholeSessionResetToast(0, 4, 0, fmt),
+    'Whole session reset (0/4).'
+  );
+});
+
+test('Hardcore Mode enforces mandatory auto-start breaks/focus and completes only after 4 focus sessions', () => {
+  const rawHardcore: PomodoroSettings = {
+    ...TEST_SETTINGS,
+    targetTally: 2,
+    autoStartBreaks: false,
+    autoStartFocus: false,
+    hardcoreMode: true,
+  };
+  const enforced = enforceHardcoreSettings(rawHardcore);
+  assert.equal(enforced.targetTally, HARDCORE_REQUIRED_SESSIONS);
+  assert.equal(enforced.autoStartBreaks, true);
+  assert.equal(enforced.autoStartFocus, true);
+
+  let state = createInitialPomodoroState(rawHardcore);
+  let stats = {};
+  let now = new Date('2026-11-12T10:00:00Z').getTime();
+
+  for (let i = 1; i <= 3; i++) {
+    const focusDone = completePhase(state, rawHardcore, stats, now);
+    state = focusDone.nextState;
+    stats = focusDone.nextStats;
+    assert.equal(focusDone.hardcoreCompleted, false);
+    assert.equal(state.phase, 'SHORT_BREAK');
+    assert.equal(state.status, 'running'); // auto-started break mandatory
+    assert.equal(state.cycleTally, i);
+
+    now += state.durationMs;
+    const breakDone = completePhase(state, rawHardcore, stats, now);
+    state = breakDone.nextState;
+    stats = breakDone.nextStats;
+    assert.equal(breakDone.hardcoreCompleted, false);
+    assert.equal(state.phase, 'FOCUS');
+    assert.equal(state.status, 'running'); // auto-started focus mandatory
+  }
+
+  // 4th completed focus finishes Hardcore Mode
+  now += state.durationMs;
+  const finalDone = completePhase(state, rawHardcore, stats, now);
+  assert.equal(finalDone.hardcoreCompleted, true);
+  assert.equal(finalDone.nextState.cycleTally, 4);
+  assert.equal(finalDone.nextState.phase, 'LONG_BREAK');
+  assert.equal(finalDone.nextState.status, 'running');
+});
+
+
+

@@ -11,7 +11,13 @@ import {
 } from 'firebase/auth';
 import { auth } from '../lib/firebase';
 import { Settings, TimerState } from '../types';
-import { pushAllToCloud, clearLocalDeviceWorkspace } from '../lib/cloudSync';
+import {
+  pushCloudDomains,
+  clearLocalDeviceWorkspace,
+  getCloudSyncStatus,
+  subscribeCloudSyncStatus,
+  type CloudSyncStatusState,
+} from '../lib/cloudSync';
 import { Icon } from './Icons';
 
 interface CloudAccountSectionProps {
@@ -20,13 +26,14 @@ interface CloudAccountSectionProps {
   onToast: (msg: string, type?: '' | 'err') => void;
   lang?: string;
   onUpdateSettingsName?: (name: string) => void;
+  onForceSync?: () => Promise<boolean>;
 }
 
 export const CloudAccountSection: React.FC<CloudAccountSectionProps> = ({
   settings,
-  timerState,
   onToast,
   onUpdateSettingsName,
+  onForceSync,
 }) => {
   const [currentUser, setCurrentUser] = useState<User | null>(auth.currentUser);
   const [mode, setMode] = useState<'signin' | 'signup'>('signin');
@@ -36,8 +43,11 @@ export const CloudAccountSection: React.FC<CloudAccountSectionProps> = ({
   const [editingName, setEditingName] = useState(false);
   const [savingName, setSavingName] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [syncingNow, setSyncingNow] = useState(false);
+  const [syncState, setSyncState] = useState<CloudSyncStatusState>(() => getCloudSyncStatus());
 
   useEffect(() => {
+    const unsubSync = subscribeCloudSyncStatus(setSyncState);
     const unsub = onAuthStateChanged(auth, user => {
       setCurrentUser(user);
       if (user?.displayName) {
@@ -46,7 +56,10 @@ export const CloudAccountSection: React.FC<CloudAccountSectionProps> = ({
         setDisplayNameInput(settings.name);
       }
     });
-    return () => unsub();
+    return () => {
+      unsubSync();
+      unsub();
+    };
   }, [settings.name]);
 
   const handleAuthSubmit = async (e: React.FormEvent) => {
@@ -131,8 +144,9 @@ export const CloudAccountSection: React.FC<CloudAccountSectionProps> = ({
       if (onUpdateSettingsName) {
         onUpdateSettingsName(trimmed);
       }
-      await pushAllToCloud(currentUser.uid, { ...settings, name: trimmed }, timerState, {
-        customDisplayName: trimmed,
+      await pushCloudDomains(currentUser.uid, {
+        displayName: trimmed,
+        settings: { ...settings, name: trimmed },
       });
       setEditingName(false);
       onToast('Display name updated and synced to Cloud.');
@@ -143,7 +157,47 @@ export const CloudAccountSection: React.FC<CloudAccountSectionProps> = ({
     }
   };
 
+  const handleManualSync = async () => {
+    if (!onForceSync) return;
+    setSyncingNow(true);
+    try {
+      const ok = await onForceSync();
+      if (ok) {
+        onToast('Cloud workspace synced.');
+      } else {
+        onToast('Sync failed. Check connection and try again.', 'err');
+      }
+    } finally {
+      setSyncingNow(false);
+    }
+  };
+
   if (currentUser) {
+    const badgeColor =
+      syncState.status === 'error'
+        ? '#f87171'
+        : syncState.status === 'syncing'
+        ? '#fbbf24'
+        : '#34d399';
+    const badgeBg =
+      syncState.status === 'error'
+        ? 'rgba(248, 113, 113, 0.14)'
+        : syncState.status === 'syncing'
+        ? 'rgba(251, 191, 36, 0.14)'
+        : 'rgba(52, 211, 153, 0.12)';
+    const badgeBorder =
+      syncState.status === 'error'
+        ? 'rgba(248, 113, 113, 0.35)'
+        : syncState.status === 'syncing'
+        ? 'rgba(251, 191, 36, 0.35)'
+        : 'rgba(52, 211, 153, 0.25)';
+    const badgeText =
+      syncState.status === 'error'
+        ? 'Sync issue'
+        : syncState.status === 'syncing'
+        ? 'Syncing...'
+        : 'Auto-sync active';
+
     return (
       <div className="card" style={{ borderColor: 'var(--accent-border)' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '14px' }}>
@@ -163,38 +217,55 @@ export const CloudAccountSection: React.FC<CloudAccountSectionProps> = ({
               <Icon name="cloud" />
             </div>
             <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                 <span style={{ fontSize: '15px', fontWeight: 650, color: '#fff' }}>
                   {currentUser.displayName || currentUser.email || 'Connected Account'}
                 </span>
                 <span
+                  data-testid="cloudSyncBadge"
                   style={{
                     fontSize: '11px',
                     padding: '2px 8px',
                     borderRadius: '12px',
-                    background: 'rgba(52, 211, 153, 0.12)',
-                    color: '#34d399',
-                    border: '1px solid rgba(52, 211, 153, 0.25)',
+                    background: badgeBg,
+                    color: badgeColor,
+                    border: `1px solid ${badgeBorder}`,
                     fontWeight: 600,
                   }}
                 >
-                  Auto-sync active
+                  {badgeText}
                 </span>
               </div>
               <p style={{ margin: '2px 0 0', fontSize: '12px', color: 'var(--muted)' }}>
                 {currentUser.email}
+                {syncState.lastSyncedAt
+                  ? ` · Synced ${new Date(syncState.lastSyncedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                  : ''}
               </p>
             </div>
           </div>
 
-          <button
-            type="button"
-            className="btn ghost"
-            style={{ fontSize: '13px', padding: '6px 14px' }}
-            onClick={handleSignOut}
-          >
-            Sign Out
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {onForceSync && (
+              <button
+                type="button"
+                className="btn"
+                disabled={syncingNow}
+                style={{ fontSize: '13px', padding: '6px 14px', minHeight: '34px' }}
+                onClick={handleManualSync}
+              >
+                {syncingNow ? 'Syncing...' : 'Sync Now'}
+              </button>
+            )}
+            <button
+              type="button"
+              className="btn ghost"
+              style={{ fontSize: '13px', padding: '6px 14px' }}
+              onClick={handleSignOut}
+            >
+              Sign Out
+            </button>
+          </div>
         </div>
 
         {/* Editable User Display Name synced to Cloud */}

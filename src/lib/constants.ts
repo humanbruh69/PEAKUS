@@ -7,9 +7,9 @@ export const DEFAULTS: Settings = {
   language: 'en',
   mode: 'focus',
   modes: {
-    home: { bg: { kind: 'scene', id: 'bosque' }, dim: 28, blur: 0, posX: 50, posY: 50, keyTone: false },
-    focus: { bg: { kind: 'scene', id: 'cafe' }, dim: 30, blur: 0, posX: 50, posY: 50, keyTone: false },
-    ambient: { bg: { kind: 'scene', id: 'ventana' }, dim: 8, blur: 0, posX: 50, posY: 50, keyTone: false },
+    home: { bg: { kind: 'scene', id: 'bosque' }, dim: 28, blur: 0, posX: 50, posY: 50, keyTone: false, kenBurns: false, shakeEffect: false },
+    focus: { bg: { kind: 'scene', id: 'cafe' }, dim: 30, blur: 0, posX: 50, posY: 50, keyTone: false, kenBurns: false, shakeEffect: false },
+    ambient: { bg: { kind: 'scene', id: 'ventana' }, dim: 8, blur: 0, posX: 50, posY: 50, keyTone: false, kenBurns: false, shakeEffect: false },
   },
   clock: {
     format: '12',
@@ -44,6 +44,7 @@ export const DEFAULTS: Settings = {
     label: 'Study & Focus',
     streakGoal: 25,
     flowMode: false,
+    hardcoreMode: false,
   },
   quotes: {
     show: true,
@@ -51,6 +52,7 @@ export const DEFAULTS: Settings = {
     custom: '',
     useCustom: false,
     toxicMotivation: false,
+    godMode: false,
   },
   appearance: {
     accent: '#5e6ad2',
@@ -58,6 +60,7 @@ export const DEFAULTS: Settings = {
     animation: 'auto',
     autoHide: true,
     autoHideDelay: 5,
+    guiScale: 'auto',
   },
   sounds: {
     master: 70,
@@ -260,4 +263,20 @@ export const ICON_PATHS: Record<string, string> = {
   send: '<path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/>',
   door: '<path d="M18 20V6a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v14"/><path d="M2 20h20"/><circle cx="14" cy="12" r="1"/>',
   crown: '<path d="m2 4 3 12h14l3-12-6 7-4-7-4 7-6-7zm3 16h14"/>',
+  tools: '<rect x="3.5" y="3.5" width="7" height="7" rx="1.6"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.6"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.6"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.6"/>',
+  calculator: '<rect x="4.5" y="2.5" width="15" height="19" rx="2.5"/><rect x="7.5" y="5.5" width="9" height="3.5" rx="0.8"/><path d="M8 12.5h.01M12 12.5h.01M16 12.5h.01M8 15.5h.01M12 15.5h.01M16 15.5h.01M8 18.5h.01M12 18.5h.01M16 18.5h.01" stroke-width="2.2" stroke-linecap="round"/>',
+  volumeMute: '<path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4Z"/><path d="m16.5 9.5 4 5M20.5 9.5l-4 5"/>',
+  todoBell: '<rect x="3.5" y="4" width="17" height="16.5" rx="3"/><path d="m8 10.5 2 2 4-4"/><path d="M8 16h8"/>',
+  minus: '<path d="M5 12h14"/>',
+  tableView: '<rect x="3.5" y="4.5" width="17" height="15" rx="2"/><path d="M3.5 9.5h17M3.5 14.5h17M9.5 9.5v10"/>',
+  boardView: '<rect x="3.5" y="4.5" width="17" height="15" rx="2"/><path d="M9.2 4.5v15M14.8 4.5v15"/>',
+  listView: '<path d="M8 6.5h12M8 12h12M8 17.5h12"/><circle cx="4.5" cy="6.5" r="1" fill="currentColor"/><circle cx="4.5" cy="12" r="1" fill="currentColor"/><circle cx="4.5" cy="17.5" r="1" fill="currentColor"/>',
+  search: '<circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/>',
+  filter: '<path d="M4 6h16M7 12h10M10 18h4"/>',
+  sort: '<path d="m7 15 3 3 3-3M10 6v12M17 9l-3-3-3 3M14 18V6"/>',
+  arrowLeft: '<path d="M19 12H5M11 6l-6 6 6 6"/>',
+  lock: '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
+  link: '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>',
+  bellOff: '<path d="M13.73 21a2 2 0 0 1-3.46 0"/><path d="M18.63 13A17.89 17.89 0 0 1 18 8"/><path d="M6.26 6.26A5.86 5.86 0 0 0 6 8c0 7-3 9-3 9h14"/><path d="M18 8a6 6 0 0 0-9.33-5"/><path d="m2 2 20 20"/>',
+  shield: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/>',
 };

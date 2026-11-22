@@ -1,6 +1,17 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cleanSettingsForCloud, checkAndSanitizeSettings, mergeRemoteSettingsWithLocalUploads } from './cloudSync';
+import {
+  cleanSettingsForCloud,
+  checkAndSanitizeSettings,
+  mergeRemoteSettingsWithLocalUploads,
+  buildCloudDomainPatch,
+  shouldApplyRemoteDomain,
+  markDomainWriteStarted,
+  markDomainWriteFinished,
+  resetCloudDomainTracking,
+  fetchUserCloudData,
+} from './cloudSync';
+import { sanitizeSavedLinks, getSavedLinks, setAllSavedLinks } from './savedLinks';
 import { DEFAULTS } from './constants';
 import type { Settings } from '../types';
 
@@ -151,3 +162,77 @@ test('mergeRemoteSettingsWithLocalUploads preserves local upload/videoUpload bac
   assert.equal(mergedExplicit.modes.focus.bg.kind, 'scene');
   assert.equal(mergedExplicit.modes.focus.bg.id, 'bosque');
 });
+
+test('buildCloudDomainPatch isolates changed domains so YouTube links, notes, and tasks never clobber sibling fields', () => {
+  const linkPatch = buildCloudDomainPatch(
+    'user-1',
+    {
+      savedLinks: [
+        {
+          id: 'yt-1',
+          url: 'https://www.youtube.com/watch?v=jfKfPfyJRdk',
+          title: 'Lofi Study',
+          type: 'both',
+          addedAt: 1700000000000,
+        },
+      ],
+    },
+    1700000001000,
+    'test@example.com'
+  );
+
+  assert.deepEqual(linkPatch.domains, ['savedLinks']);
+  assert.equal(linkPatch.payload.userId, 'user-1');
+  assert.equal(linkPatch.payload.savedLinks.length, 1);
+  assert.equal(linkPatch.payload.savedLinks[0].youtubeId, 'jfKfPfyJRdk');
+  assert.equal('notes' in linkPatch.payload, false);
+  assert.equal('tasks' in linkPatch.payload, false);
+  assert.equal('settings' in linkPatch.payload, false);
+
+  const notesPatch = buildCloudDomainPatch('user-1', { notes: 'Chapter 4 key takeaways' }, 1700000002000);
+  assert.deepEqual(notesPatch.domains, ['notes']);
+  assert.equal(notesPatch.payload.notes, 'Chapter 4 key takeaways');
+  assert.equal('savedLinks' in notesPatch.payload, false);
+  assert.equal('tasks' in notesPatch.payload, false);
+});
+
+test('shouldApplyRemoteDomain suppresses in-flight writes, pending-write echoes, and cooldown echoes', () => {
+  resetCloudDomainTracking();
+
+  // Initial snapshot with clean state should apply
+  assert.equal(shouldApplyRemoteDomain('notes', false, true, 1000), true);
+  // Real-time update with pending local writes should NOT apply
+  assert.equal(shouldApplyRemoteDomain('notes', true, false, 1000), false);
+
+  // In-flight write blocks even initial or clean snapshots for that domain only
+  markDomainWriteStarted(['notes']);
+  assert.equal(shouldApplyRemoteDomain('notes', false, false, 1100), false);
+  assert.equal(shouldApplyRemoteDomain('tasks', false, false, 1100), true);
+
+  // After finishing write, 500ms cooldown blocks rapid self-echoes, then expires
+  markDomainWriteFinished(['notes'], 1200);
+  assert.equal(shouldApplyRemoteDomain('notes', false, false, 1400), false);
+  assert.equal(shouldApplyRemoteDomain('notes', false, false, 1800), true);
+  resetCloudDomainTracking();
+});
+
+test('sanitizeSavedLinks deduplicates YouTube URLs and setAllSavedLinks preserves explicit empty lists', () => {
+  const sanitized = sanitizeSavedLinks([
+    { id: '1', url: 'https://www.youtube.com/watch?v=jfKfPfyJRdk', title: 'Lofi', type: 'music', addedAt: 1 },
+    { id: '2', url: 'https://youtu.be/jfKfPfyJRdk', title: 'Lofi Dup', type: 'music', addedAt: 2 },
+    { id: '3', url: '', title: 'Invalid', type: 'bg', addedAt: 3 },
+  ]);
+  assert.equal(sanitized.length, 1);
+  assert.equal(sanitized[0].youtubeId, 'jfKfPfyJRdk');
+
+  setAllSavedLinks([], false);
+  assert.deepEqual(getSavedLinks(), []);
+});
+
+test('fetchUserCloudData handles empty userId cleanly without treating it as a crash', async () => {
+  const res = await fetchUserCloudData('');
+  assert.equal(res.exists, false);
+  assert.equal(res.data, null);
+  assert.equal(res.error, undefined);
+});
+

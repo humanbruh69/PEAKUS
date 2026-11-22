@@ -27,7 +27,15 @@
         },
         "tasks": {
           "type": "array",
-          "description": "User tasks and checklists"
+          "description": "User focus tasks with icons, ordering, estimates, and subtasks"
+        },
+        "todos": {
+          "type": "array",
+          "description": "User Notion-style todo pages with status, icon, tags, subtasks, priority, and scheduled reminder timestamps"
+        },
+        "todoPrefs": {
+          "type": "object",
+          "description": "User todo reminder notification quote preferences and preferred database view mode"
         },
         "history": {
           "type": "object",
@@ -37,9 +45,17 @@
           "type": "string",
           "description": "User scratchpad notes"
         },
+        "presets": {
+          "type": "array",
+          "description": "User custom Pomodoro timer presets"
+        },
         "timer": {
           "type": "object",
           "description": "Last paused or idle timer state"
+        },
+        "pomodoro": {
+          "type": "object",
+          "description": "Pomodoro config, cycleTally, and daily focusStats map"
         },
         "updatedAt": {
           "type": "number",
@@ -55,7 +71,7 @@
       "properties": {
         "code": {
           "type": "string",
-          "description": "Uppercase 6-character unique join code"
+          "description": "Uppercase 6-8 character unique join code"
         },
         "name": {
           "type": "string",
@@ -63,7 +79,7 @@
         },
         "hostId": {
           "type": "string",
-          "description": "Firebase Auth UID of the room creator"
+          "description": "Firebase Auth UID of the current room host"
         },
         "hostName": {
           "type": "string",
@@ -75,11 +91,43 @@
         },
         "timer": {
           "type": "object",
-          "description": "Synchronized room timer state"
+          "description": "Synchronized room timer state including drift-free targetEndTime"
         },
-        "theme": {
-          "type": "object",
-          "description": "Shared background preset"
+        "locked": {
+          "type": "boolean",
+          "description": "Whether new joins are temporarily locked by host"
+        },
+        "closed": {
+          "type": "boolean",
+          "description": "Whether the room was explicitly closed by the host"
+        },
+        "maxMembers": {
+          "type": "number",
+          "description": "Maximum allowed active participants in the room"
+        },
+        "sharedGoalTitle": {
+          "type": "string",
+          "description": "Shared room study goal label"
+        },
+        "sharedGoalTargetMs": {
+          "type": "number",
+          "description": "Collective room focus target in milliseconds"
+        },
+        "groupHardcore": {
+          "type": "boolean",
+          "description": "Whether the room encourages synchronized Group Hardcore sessions"
+        },
+        "sprintStartAt": {
+          "type": "number",
+          "description": "Unix timestamp in ms when a scheduled 60s group sprint begins"
+        },
+        "mutedUserIds": {
+          "type": "array",
+          "description": "Bounded list of user UIDs muted in chat by the host"
+        },
+        "kickedUserIds": {
+          "type": "array",
+          "description": "Bounded list of user UIDs removed from the room by the host"
         },
         "createdAt": {
           "type": "number",
@@ -88,6 +136,10 @@
         "updatedAt": {
           "type": "number",
           "description": "Unix timestamp in ms of last room activity"
+        },
+        "memberCount": {
+          "type": "number",
+          "description": "Last known active member count"
         }
       },
       "required": ["code", "name", "hostId", "timerMode", "createdAt", "updatedAt"]
@@ -113,9 +165,17 @@
           "type": "string",
           "description": "Active task title"
         },
+        "activeTaskDone": {
+          "type": "boolean",
+          "description": "Whether the member's visible room task is marked completed"
+        },
+        "hardcoreMode": {
+          "type": "boolean",
+          "description": "Whether the member currently has Hardcore Mode active"
+        },
         "todayFocusMs": {
           "type": "number",
-          "description": "Focus minutes completed today"
+          "description": "Focus milliseconds completed today"
         },
         "isHost": {
           "type": "boolean",
@@ -134,7 +194,7 @@
     },
     "RoomMessage": {
       "title": "RoomMessage",
-      "description": "Chat message or encouragement reaction sent inside a study room",
+      "description": "Chat message, encouragement reaction, nudge, or system milestone inside a study room",
       "type": "object",
       "properties": {
         "id": {
@@ -151,11 +211,11 @@
         },
         "text": {
           "type": "string",
-          "description": "Text message content or reaction emoji"
+          "description": "Text message content, reaction emoji, or nudge"
         },
         "type": {
           "type": "string",
-          "description": "Type of message: chat, reaction, or system"
+          "description": "Type of message: chat, reaction, system, or nudge"
         },
         "createdAt": {
           "type": "number",

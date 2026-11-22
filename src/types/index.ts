@@ -21,6 +21,7 @@ export type TimerStyle = 'default' | 'flip' | 'bar' | 'gauge' | 'dots' | 'pie';
 export type TalliesStyle = 'emoji' | 'dots' | 'numbers' | 'none';
 export type QuoteRotation = 'daily' | 'hourly' | 'visit';
 export type AnimationMode = 'auto' | 'on' | 'off';
+export type GuiScaleSetting = 'auto' | 1 | 2 | 3 | 4;
 export type LanguageCode = 'en' | 'ta' | 'es';
 
 export interface BackgroundConfig {
@@ -41,6 +42,8 @@ export interface ModeConfig {
   posX: number;
   posY: number;
   keyTone?: boolean;
+  kenBurns?: boolean;
+  shakeEffect?: boolean;
 }
 
 export interface ClockSettings {
@@ -77,6 +80,7 @@ export interface TimerSettings {
   label: string;
   streakGoal: number;
   flowMode?: boolean;
+  hardcoreMode?: boolean;
 }
 
 export interface QuotesSettings {
@@ -85,6 +89,7 @@ export interface QuotesSettings {
   custom: string;
   useCustom: boolean;
   toxicMotivation?: boolean;
+  godMode?: boolean;
 }
 
 export interface AppearanceSettings {
@@ -93,6 +98,7 @@ export interface AppearanceSettings {
   animation: AnimationMode;
   autoHide: boolean;
   autoHideDelay: number;
+  guiScale?: GuiScaleSetting;
 }
 
 export interface SoundsSettings {
@@ -138,6 +144,7 @@ export interface Subtask {
 export interface Task {
   id: string;
   title: string;
+  icon?: string;
   done: boolean;
   createdAt: number;
   updatedAt: number;
@@ -147,6 +154,7 @@ export interface Task {
   order?: number;
   active?: boolean;
   deleted?: boolean;
+  linkedTodoId?: string | null;
 }
 
 export interface TasksState {
@@ -252,10 +260,49 @@ export interface SyncMeta {
 
 export type ServerStatus = 'unknown' | 'ok' | 'not_configured' | 'unavailable' | 'error';
 
+export type TodoPriority = 'low' | 'medium' | 'high';
+export type TodoStatus = 'todo' | 'in_progress' | 'done';
+export type TodoViewMode = 'list' | 'table' | 'board';
+export type TodoQuoteMode = 'default' | 'toxic' | 'custom';
+
+export interface TodoSubtask {
+  id: string;
+  title: string;
+  done: boolean;
+}
+
+export interface TodoItem {
+  id: string;
+  title: string;
+  icon?: string;
+  status?: TodoStatus;
+  note?: string;
+  done: boolean;
+  priority: TodoPriority;
+  tags?: string[];
+  subtasks?: TodoSubtask[];
+  order?: number;
+  remindAt: number | null;
+  remindedAt?: number | null;
+  createdAt: number;
+  updatedAt: number;
+  doneAt?: number | null;
+  linkedTaskId?: string | null;
+}
+
+export interface TodoNotificationPrefs {
+  quotesEnabled: boolean;
+  quoteMode: TodoQuoteMode;
+  customQuotes: string[];
+  defaultView?: TodoViewMode;
+}
+
 export interface SyncDoc {
   v: number;
   settings?: Settings;
   tasks?: TasksState | any;
+  todos?: TodoItem[];
+  todoPrefs?: TodoNotificationPrefs;
   history?: HistoryState | any;
   notes?: NotesDoc;
 }

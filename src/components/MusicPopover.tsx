@@ -10,6 +10,13 @@ import {
 } from '../lib/youtube';
 import { saveLink, type SavedLinkItem } from '../lib/savedLinks';
 import { SavedLinksList } from './SavedLinksList';
+import {
+  clampSeekSeconds,
+  clampVolume,
+  computeProgressRatio,
+  fmtMediaTime,
+} from '../lib/ytMusicMath';
+import type { MusicPlaybackTelemetry } from './YouTubeMusicPlayer';
 
 interface MusicPopoverProps {
   open: boolean;
@@ -17,6 +24,11 @@ interface MusicPopoverProps {
   settings: Settings;
   onUpdateSettings: (s: Settings, path?: string) => void;
   onToast: (msg: string, type?: '' | 'err') => void;
+  telemetry: MusicPlaybackTelemetry;
+  muted: boolean;
+  onToggleMute: () => void;
+  onVolumeChange: (volume: number) => void;
+  onSeek: (seconds: number) => void;
 }
 
 export const MusicPopover: React.FC<MusicPopoverProps> = ({
@@ -25,10 +37,16 @@ export const MusicPopover: React.FC<MusicPopoverProps> = ({
   settings,
   onUpdateSettings,
   onToast,
+  telemetry,
+  muted,
+  onToggleMute,
+  onVolumeChange,
+  onSeek,
 }) => {
   const lang = settings.language || 'en';
   const music = settings.music;
   const [customUrl, setCustomUrl] = useState('');
+  const [scrubValue, setScrubValue] = useState<number | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -40,6 +58,12 @@ export const MusicPopover: React.FC<MusicPopoverProps> = ({
   }, [open, onClose]);
 
   if (!open) return null;
+
+  const duration = Math.max(0, telemetry.duration || 0);
+  const isLive = telemetry.ready && telemetry.isLive && duration <= 0;
+  const currentPos = scrubValue !== null ? scrubValue : telemetry.currentTime || 0;
+  const effectiveVolume = muted ? 0 : clampVolume(music.volume ?? 70);
+  const progressPct = isLive ? 100 : computeProgressRatio(currentPos, duration) * 100;
 
   const handleTogglePlay = () => {
     const nextPlaying = !music.playing;
@@ -54,6 +78,7 @@ export const MusicPopover: React.FC<MusicPopoverProps> = ({
   };
 
   const handleSelectPreset = (preset: YouTubePreset) => {
+    setScrubValue(null);
     const next = {
       ...settings,
       music: {
@@ -75,8 +100,8 @@ export const MusicPopover: React.FC<MusicPopoverProps> = ({
       onToast(t('invalidYtUrl', lang), 'err');
       return;
     }
-    // Auto-save pasted YouTube link in browser storage
     saveLink(customUrl, 'Custom YouTube Stream', 'music');
+    setScrubValue(null);
 
     const next = {
       ...settings,
@@ -96,6 +121,7 @@ export const MusicPopover: React.FC<MusicPopoverProps> = ({
   const handleSelectSavedLink = (item: SavedLinkItem) => {
     const id = item.youtubeId || extractYouTubeId(item.url);
     if (!id) return;
+    setScrubValue(null);
     const next = {
       ...settings,
       music: {
@@ -108,6 +134,12 @@ export const MusicPopover: React.FC<MusicPopoverProps> = ({
     };
     onUpdateSettings(next, 'music');
     onToast(`${t('nowStreaming', lang)}: ${item.title}`);
+  };
+
+  const commitSeek = (targetSeconds: number) => {
+    const clamped = clampSeekSeconds(targetSeconds, duration);
+    setScrubValue(null);
+    onSeek(clamped);
   };
 
   return (
@@ -156,6 +188,18 @@ export const MusicPopover: React.FC<MusicPopoverProps> = ({
                 <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--muted)' }}>
                   {music.playing ? t('streamPlaying', lang) : t('streamPaused', lang)}
                 </span>
+                {isLive && music.playing && (
+                  <span
+                    style={{
+                      fontSize: '10px',
+                      fontWeight: 700,
+                      color: '#f87171',
+                      letterSpacing: '0.06em',
+                    }}
+                  >
+                    · {t('liveStream', lang)}
+                  </span>
+                )}
               </div>
               <h4 style={{ margin: 0, fontSize: '14.5px', fontWeight: 650, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {music.title || 'Lofi Beats'}
@@ -163,6 +207,7 @@ export const MusicPopover: React.FC<MusicPopoverProps> = ({
             </div>
 
             <button
+              type="button"
               className="ctl primary"
               style={{ width: '42px', height: '42px', borderRadius: '50%' }}
               onClick={handleTogglePlay}
@@ -172,9 +217,95 @@ export const MusicPopover: React.FC<MusicPopoverProps> = ({
             </button>
           </div>
 
+          {/* Seek Bar */}
+          <div className="music-seek-wrap">
+            <div className="music-seek-meta">
+              <span className="music-time tabular-nums">
+                {fmtMediaTime(currentPos)}
+              </span>
+
+              <div className="music-nudge-group">
+                <button
+                  type="button"
+                  className="music-nudge-btn"
+                  disabled={isLive || (!telemetry.ready && !music.playing)}
+                  onClick={() => commitSeek(Math.max(0, currentPos - 10))}
+                  title={t('seekBack10', lang)}
+                  aria-label={t('seekBack10', lang)}
+                >
+                  -10s
+                </button>
+                <button
+                  type="button"
+                  className="music-nudge-btn"
+                  disabled={isLive || (!telemetry.ready && !music.playing)}
+                  onClick={() => commitSeek(currentPos + 10)}
+                  title={t('seekForward10', lang)}
+                  aria-label={t('seekForward10', lang)}
+                >
+                  +10s
+                </button>
+              </div>
+
+              <span className="music-time tabular-nums">
+                {isLive ? t('liveStream', lang) : fmtMediaTime(duration)}
+              </span>
+            </div>
+
+            <input
+              id="musicSeekSlider"
+              type="range"
+              className="music-range"
+              aria-label="Seek YouTube music stream"
+              min={0}
+              max={duration > 0 ? Math.floor(duration) : 100}
+              step={1}
+              disabled={isLive || duration <= 0}
+              value={isLive ? 100 : duration > 0 ? Math.min(Math.floor(duration), Math.floor(currentPos)) : 0}
+              style={{ '--p': `${progressPct}%` } as React.CSSProperties}
+              onChange={e => setScrubValue(Number(e.target.value))}
+              onMouseUp={e => commitSeek(Number((e.target as HTMLInputElement).value))}
+              onTouchEnd={e => commitSeek(Number((e.target as HTMLInputElement).value))}
+              onKeyUp={e => commitSeek(Number((e.target as HTMLInputElement).value))}
+            />
+          </div>
+
+          {/* Individual Stream Volume Control */}
+          <div className="music-vol-wrap">
+            <button
+              type="button"
+              id="btnMuteMusic"
+              className="music-mute-btn"
+              onClick={onToggleMute}
+              aria-label={muted || effectiveVolume === 0 ? t('unmuteMusic', lang) : t('muteMusic', lang)}
+              title={muted || effectiveVolume === 0 ? t('unmuteMusic', lang) : t('muteMusic', lang)}
+            >
+              <Icon name={muted || effectiveVolume === 0 ? 'volumeMute' : 'volume'} />
+            </button>
+
+            <div className="music-vol-label">{t('musicVolume', lang)}</div>
+
+            <input
+              id="musicVolumeSlider"
+              type="range"
+              className="music-range music-vol-slider"
+              aria-label={t('musicVolume', lang)}
+              min={0}
+              max={100}
+              step={1}
+              value={effectiveVolume}
+              style={{ '--p': `${effectiveVolume}%` } as React.CSSProperties}
+              onChange={e => onVolumeChange(clampVolume(Number(e.target.value)))}
+            />
+
+            <span className="music-vol-pct tabular-nums" data-testid="musicVolumePct">
+              {effectiveVolume}%
+            </span>
+          </div>
+
           {/* Visualizer animation when playing */}
           {music.playing && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '3px', height: '18px', marginTop: '12px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '3px', height: '14px', marginTop: '12px' }}>
               {[0.4, 0.8, 0.5, 0.9, 0.6, 1.0, 0.7, 0.3, 0.8, 0.5, 0.9, 0.4].map((h, i) => (
                 <span
                   key={i}
@@ -183,7 +314,7 @@ export const MusicPopover: React.FC<MusicPopoverProps> = ({
                     height: `${h * 100}%`,
                     backgroundColor: 'var(--accent-text)',
                     borderRadius: '2px',
-                    opacity: 0.85,
+                    opacity: 0.75,
                     animation: `pulse 1s ease-in-out infinite alternate`,
                     animationDelay: `${(i * 0.1).toFixed(1)}s`,
                   }}

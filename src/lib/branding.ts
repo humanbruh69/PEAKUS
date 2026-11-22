@@ -1,6 +1,5 @@
 /**
  * Peakus Branding & Logo Assets
- * Sleek geometric vector mountain logo symbolising reaching the peak of focus and discipline.
  */
-export const APP_LOGO_SRC = '/mountain_logo.svg';
+export const APP_LOGO_SRC = '/assets/aistudio/Project_11__93807FE__d3a0bb19.png';
 export { PeakusMountainLogo } from '../components/PeakusMountainLogo';

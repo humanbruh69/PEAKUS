@@ -4,9 +4,12 @@ import type { Settings, ModeKey, TimerPhase, Task, TimerStatus } from '../types'
 import { fmtClock, dayKey, hashStr } from '../lib/utils';
 import { t } from '../lib/i18n';
 import { selectStageQuote } from '../lib/toxicQuotes';
+import { GOD_MODE_QUOTE_TAG } from '../lib/todoEngine';
 import { AmbientTimer } from './AmbientTimer';
+import { FlipClockDigits } from './FlipClockDigits';
 import type { PomodoroPreset } from '../lib/presets';
 import { resolveTallyEmojis } from '../lib/tallyThemes';
+import type { StudyRoom, RoomMember } from '../lib/studyRooms';
 
 interface StageProps {
   settings: Settings;
@@ -48,8 +51,19 @@ interface StageProps {
   onToggleFlowMode?: () => void;
   onResetSegments?: () => void;
   currentRoomCode?: string | null;
+  roomsOpen?: boolean;
+  onOpenRooms?: () => void;
+  roomUnreadCount?: number;
+  activeRoom?: StudyRoom | null;
+  roomMembers?: RoomMember[];
+  sprintCountdownSec?: number;
   studyBotOpen?: boolean;
   onOpenStudyBot?: () => void;
+  calculatorOpen?: boolean;
+  onOpenCalculator?: () => void;
+  todoOpen?: boolean;
+  onOpenTodo?: () => void;
+  onRequestQuitHardcore?: () => void;
 }
 
 export const Stage: React.FC<StageProps> = ({
@@ -81,15 +95,29 @@ export const Stage: React.FC<StageProps> = ({
   zenMode,
   onToggleZen,
   onResetSegments,
+  currentRoomCode = null,
+  roomsOpen = false,
+  onOpenRooms,
+  roomUnreadCount = 0,
+  activeRoom = null,
+  roomMembers = [],
+  sprintCountdownSec = 0,
   studyBotOpen = false,
   onOpenStudyBot,
+  calculatorOpen = false,
+  onOpenCalculator,
+  todoOpen = false,
+  onOpenTodo,
+  onRequestQuitHardcore,
 }) => {
   const [now, setNow] = useState(new Date());
   const [isEditingLabel, setIsEditingLabel] = useState(false);
   const [customLabel, setCustomLabel] = useState('');
   const [isFs, setIsFs] = useState(false);
   const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
+  const [toolsMenuOpen, setToolsMenuOpen] = useState(false);
   const moreRef = useRef<HTMLDivElement>(null);
+  const toolsRef = useRef<HTMLDivElement>(null);
 
   const lang = settings.language || 'en';
 
@@ -114,17 +142,30 @@ export const Stage: React.FC<StageProps> = ({
     };
   }, []);
 
-  // Close mobile "more" drawer on outside tap
+  // Close mobile "more" or Tools drawer on outside tap / Escape
   useEffect(() => {
-    if (!mobileMoreOpen) return;
+    if (!mobileMoreOpen && !toolsMenuOpen) return;
     const handleOutside = (e: PointerEvent) => {
       if (moreRef.current && !moreRef.current.contains(e.target as Node)) {
         setMobileMoreOpen(false);
       }
+      if (toolsRef.current && !toolsRef.current.contains(e.target as Node)) {
+        setToolsMenuOpen(false);
+      }
+    };
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setMobileMoreOpen(false);
+        setToolsMenuOpen(false);
+      }
     };
     window.addEventListener('pointerdown', handleOutside);
-    return () => window.removeEventListener('pointerdown', handleOutside);
-  }, [mobileMoreOpen]);
+    window.addEventListener('keydown', handleEsc);
+    return () => {
+      window.removeEventListener('pointerdown', handleOutside);
+      window.removeEventListener('keydown', handleEsc);
+    };
+  }, [mobileMoreOpen, toolsMenuOpen]);
 
   const mode = settings.mode;
   const pomo = settings.timer.mode === 'pomodoro';
@@ -283,6 +324,9 @@ export const Stage: React.FC<StageProps> = ({
 
   // Render flip or standard digits
   const renderDigits = (timeStr: string, flip = false) => {
+    if (flip) {
+      return <FlipClockDigits value={timeStr} animate={!animDisabled} />;
+    }
     return (
       <>
         {Array.from(timeStr).map((ch, idx) => {
@@ -294,7 +338,7 @@ export const Stage: React.FC<StageProps> = ({
             );
           }
           return (
-            <span key={`d-${idx}`} className={`d ${flip ? 'flipping' : ''}`}>
+            <span key={`d-${idx}`} className="d">
               <span>{ch}</span>
             </span>
           );
@@ -310,6 +354,8 @@ export const Stage: React.FC<StageProps> = ({
       ? t('resume', lang)
       : t('start', lang);
 
+  const hardcoreMode = !!settings.timer.hardcoreMode;
+  const pauseLocked = hardcoreMode && timerState.status === 'running';
   const showSkipBtn =
     timerState.status === 'running' ||
     timerState.status === 'paused' ||
@@ -366,6 +412,30 @@ export const Stage: React.FC<StageProps> = ({
         </div>
       )}
 
+      {/* Subtle Live Room Pill on Stage */}
+      {!zenMode && activeRoom && (
+        <button
+          type="button"
+          className="stage-room-pill fadeable"
+          data-testid="stageRoomPill"
+          onClick={onOpenRooms}
+          aria-label={`Active study room: ${activeRoom.name}`}
+        >
+          <span className="stage-room-dot" aria-hidden="true" />
+          <span className="stage-room-name">{activeRoom.name}</span>
+          <span className="stage-room-meta">
+            {sprintCountdownSec > 0
+              ? `🚀 Sprint ${sprintCountdownSec}s`
+              : `${roomMembers.filter(m => m.status === 'focusing').length || roomMembers.length} focusing`}
+          </span>
+          {roomUnreadCount > 0 && (
+            <span className="stage-room-unread">
+              {roomUnreadCount > 99 ? '99+' : roomUnreadCount}
+            </span>
+          )}
+        </button>
+      )}
+
       {/* Top Right Quote */}
       {settings.quotes.show && mode !== 'ambient' && !zenMode && (
         <p
@@ -373,6 +443,11 @@ export const Stage: React.FC<StageProps> = ({
           id="quote"
         >
           “{getQuote()}”
+          {settings.quotes.godMode && (
+            <span className="quote-god-sub" data-testid="quoteGodSub">
+              {GOD_MODE_QUOTE_TAG}
+            </span>
+          )}
         </p>
       )}
 
@@ -383,6 +458,7 @@ export const Stage: React.FC<StageProps> = ({
           onToggleTimer={onToggleTimer}
           onResetTimer={onResetTimer}
           onSkipTimer={onSkipTimer}
+          onRequestQuitHardcore={onRequestQuitHardcore}
           lang={lang}
           settings={settings}
           zenMode={zenMode}
@@ -649,14 +725,41 @@ export const Stage: React.FC<StageProps> = ({
               </div>
             )}
 
+            {hardcoreMode && !zenMode && (
+              <div className="hardcore-bar">
+                <div className="hardcore-pill" data-testid="stageHardcoreBadge">
+                  <span className="hardcore-dot" aria-hidden="true" />
+                  <span>
+                    {t('hardcoreMode', lang)} · {Math.min(4, Math.max(0, timerState.cycle))}/4
+                  </span>
+                </div>
+                {onRequestQuitHardcore && (
+                  <button
+                    type="button"
+                    id="btnHardcoreQuit"
+                    className="hardcore-quit-btn"
+                    onClick={onRequestQuitHardcore}
+                    aria-label={`${t('quitHardcore', lang)} ${t('hardcoreMode', lang)}`}
+                  >
+                    {t('quitHardcore', lang)}
+                  </button>
+                )}
+              </div>
+            )}
+
             {/* Minimal Controls Row matching fwocus: [ Start / Pause ] + [ Reset ] (+ [ Skip ] when active) */}
             <div className="controls fadeable" id="controls">
               <button
                 type="button"
-                className={`ctl-pill ${timerState.status === 'running' ? 'running' : ''}`}
+                className={`ctl-pill ${timerState.status === 'running' ? 'running' : ''} ${pauseLocked ? 'locked' : ''}`}
                 id="btnToggle"
                 aria-label={primaryCtaLabel}
-                title={`${primaryCtaLabel} (Space)`}
+                aria-disabled={pauseLocked}
+                title={
+                  pauseLocked
+                    ? `${t('hardcoreMode', lang)}: Pausing disabled`
+                    : `${primaryCtaLabel} (Space)`
+                }
                 onClick={onToggleTimer}
               >
                 <span>{primaryCtaLabel}</span>
@@ -676,11 +779,14 @@ export const Stage: React.FC<StageProps> = ({
               {showSkipBtn && (
                 <button
                   type="button"
-                  className="ctl-icon"
+                  className={`ctl-icon ${hardcoreMode ? 'locked' : ''}`}
                   id="btnSkip"
                   aria-label={t('skip', lang)}
+                  aria-disabled={hardcoreMode}
                   title={
-                    timerState.phase === 'focus'
+                    hardcoreMode
+                      ? `${t('hardcoreMode', lang)}: Skipping disabled`
+                      : timerState.phase === 'focus'
                       ? pomo
                         ? t('skipToBreak', lang)
                         : t('finish', lang)
@@ -707,26 +813,12 @@ export const Stage: React.FC<StageProps> = ({
             aria-expanded={soundsOpen}
             onClick={() => {
               setMobileMoreOpen(false);
+              setToolsMenuOpen(false);
               onOpenSounds();
             }}
           >
             <Icon name="music" />
             <span className="tip">{t('sounds', lang)} (M)</span>
-          </button>
-
-          <button
-            type="button"
-            className={`ib has-tip ${notesOpen ? 'active' : ''}`}
-            id="btnNotes"
-            aria-label={t('notes', lang)}
-            aria-expanded={notesOpen}
-            onClick={() => {
-              setMobileMoreOpen(false);
-              onOpenNotes();
-            }}
-          >
-            <Icon name="pencil" />
-            <span className="tip">{t('notes', lang)}</span>
           </button>
 
           <button
@@ -737,6 +829,7 @@ export const Stage: React.FC<StageProps> = ({
             aria-expanded={tasksOpen}
             onClick={() => {
               setMobileMoreOpen(false);
+              setToolsMenuOpen(false);
               onOpenTasks();
             }}
           >
@@ -744,30 +837,145 @@ export const Stage: React.FC<StageProps> = ({
             <span className="tip">{t('tasks', lang)} (T)</span>
           </button>
 
-          {/* Desktop/Tablet direct icons (hidden into More menu on narrow portrait mobile) */}
+          {/* Desktop/Tablet Music icon (moves into More menu on narrow portrait mobile) */}
           <button
             type="button"
             className={`ib has-tip desktop-tool ${musicOpen ? 'active' : ''} ${settings.music?.playing ? 'playing' : ''}`}
             id="btnMusic"
             aria-label={t('music', lang)}
             aria-expanded={musicOpen}
-            onClick={onOpenMusic}
+            onClick={() => {
+              setToolsMenuOpen(false);
+              onOpenMusic();
+            }}
           >
             <Icon name="headphones" />
             <span className="tip">{t('music', lang)}</span>
           </button>
 
-          <button
-            type="button"
-            className={`ib has-tip desktop-tool ${studyBotOpen ? 'active' : ''}`}
-            id="btnStudyBot"
-            aria-label={t('studyBot', lang)}
-            aria-expanded={studyBotOpen}
-            onClick={onOpenStudyBot}
-          >
-            <Icon name="bot" />
-            <span className="tip">{t('studyBot', lang)} (B)</span>
-          </button>
+          {/* Unified Tools icon (collapses Notes, AI Study Bot, Calculator, and Todo List Beta) */}
+          <div className="tools-menu-wrap" ref={toolsRef}>
+            <button
+              type="button"
+              className={`ib has-tip ${toolsMenuOpen || notesOpen || studyBotOpen || calculatorOpen || todoOpen ? 'active' : ''}`}
+              id="btnTools"
+              aria-label={t('tools', lang)}
+              aria-expanded={toolsMenuOpen}
+              onClick={() => {
+                setMobileMoreOpen(false);
+                setToolsMenuOpen(prev => !prev);
+              }}
+            >
+              <Icon name="tools" />
+              <span className="tip">{t('tools', lang)}</span>
+            </button>
+
+            {toolsMenuOpen && (
+              <div className="tools-menu" id="toolsMenu" role="menu" aria-label={t('tools', lang)}>
+                <button
+                  type="button"
+                  role="menuitem"
+                  id="toolItemNotes"
+                  className={notesOpen ? 'on' : ''}
+                  onClick={() => {
+                    setToolsMenuOpen(false);
+                    onOpenNotes();
+                  }}
+                >
+                  <span className="tools-ic">
+                    <Icon name="pencil" />
+                  </span>
+                  <span className="tools-copy">
+                    <span className="tools-title">{t('notes', lang)}</span>
+                    <span className="tools-sub">{t('notesDesc', lang)}</span>
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  role="menuitem"
+                  id="toolItemStudyBot"
+                  className={studyBotOpen ? 'on' : ''}
+                  onClick={() => {
+                    setToolsMenuOpen(false);
+                    onOpenStudyBot?.();
+                  }}
+                >
+                  <span className="tools-ic">
+                    <Icon name="bot" />
+                  </span>
+                  <span className="tools-copy">
+                    <span className="tools-title">{t('studyBot', lang)}</span>
+                    <span className="tools-sub">{t('studyBotDesc', lang)}</span>
+                  </span>
+                  <kbd className="tools-kbd">B</kbd>
+                </button>
+
+                <button
+                  type="button"
+                  role="menuitem"
+                  id="toolItemCalculator"
+                  className={calculatorOpen ? 'on' : ''}
+                  onClick={() => {
+                    setToolsMenuOpen(false);
+                    onOpenCalculator?.();
+                  }}
+                >
+                  <span className="tools-ic">
+                    <Icon name="calculator" />
+                  </span>
+                  <span className="tools-copy">
+                    <span className="tools-title">{t('calculator', lang)}</span>
+                    <span className="tools-sub">{t('calculatorDesc', lang)}</span>
+                  </span>
+                  <kbd className="tools-kbd">C</kbd>
+                </button>
+
+                <button
+                  type="button"
+                  role="menuitem"
+                  id="toolItemTodo"
+                  className={todoOpen ? 'on' : ''}
+                  onClick={() => {
+                    setToolsMenuOpen(false);
+                    onOpenTodo?.();
+                  }}
+                >
+                  <span className="tools-ic">
+                    <Icon name="todoBell" />
+                  </span>
+                  <span className="tools-copy">
+                    <span className="tools-title-row">
+                      <span className="tools-title">{t('todoList', lang)}</span>
+                      <span className="tools-beta-badge">{t('betaLabel', lang)}</span>
+                    </span>
+                    <span className="tools-sub">{t('todoListDesc', lang)}</span>
+                  </span>
+                  <kbd className="tools-kbd">L</kbd>
+                </button>
+
+                <button
+                  type="button"
+                  role="menuitem"
+                  id="toolItemZen"
+                  className={zenMode ? 'on' : ''}
+                  onClick={() => {
+                    setToolsMenuOpen(false);
+                    onToggleZen();
+                  }}
+                >
+                  <span className="tools-ic">
+                    <Icon name="zen" />
+                  </span>
+                  <span className="tools-copy">
+                    <span className="tools-title">{t('zenMode', lang)}</span>
+                    <span className="tools-sub">{t('zenModeDesc', lang)}</span>
+                  </span>
+                  <kbd className="tools-kbd">Z</kbd>
+                </button>
+              </div>
+            )}
+          </div>
 
           {/* Compact More menu on narrow portrait mobile */}
           <div className="mobile-more-wrap" ref={moreRef}>
@@ -775,15 +983,23 @@ export const Stage: React.FC<StageProps> = ({
               type="button"
               className={`ib ${mobileMoreOpen ? 'active' : ''}`}
               id="btnMoreTools"
-              aria-label="More study tools"
+              aria-label="More study options"
               aria-expanded={mobileMoreOpen}
-              onClick={() => setMobileMoreOpen(prev => !prev)}
+              onClick={() => {
+                setToolsMenuOpen(false);
+                setMobileMoreOpen(prev => !prev);
+              }}
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
                 <circle cx="5" cy="12" r="2" />
                 <circle cx="12" cy="12" r="2" />
                 <circle cx="19" cy="12" r="2" />
               </svg>
+              {roomUnreadCount > 0 && (
+                <span className="rooms-unread-badge">
+                  {roomUnreadCount > 99 ? '99+' : roomUnreadCount}
+                </span>
+              )}
             </button>
 
             {mobileMoreOpen && (
@@ -793,11 +1009,14 @@ export const Stage: React.FC<StageProps> = ({
                   role="menuitem"
                   onClick={() => {
                     setMobileMoreOpen(false);
-                    onOpenStudyBot?.();
+                    onOpenRooms?.();
                   }}
                 >
-                  <Icon name="bot" />
-                  <span>{t('studyBot', lang)}</span>
+                  <Icon name="users" />
+                  <span>
+                    {t('rooms', lang)}
+                    {roomUnreadCount > 0 ? ` (${roomUnreadCount})` : ''}
+                  </span>
                 </button>
                 <button
                   type="button"
@@ -913,13 +1132,29 @@ export const Stage: React.FC<StageProps> = ({
 
             <button
               type="button"
-              className="ib has-tip desktop-tool"
-              id="btnZen"
-              aria-label={t('zenMode', lang)}
-              onClick={onToggleZen}
+              className={`ib has-tip desktop-tool ${roomsOpen ? 'active' : ''}`}
+              id="btnRooms"
+              aria-label={t('rooms', lang)}
+              aria-expanded={roomsOpen}
+              onClick={() => {
+                setMobileMoreOpen(false);
+                setToolsMenuOpen(false);
+                onOpenRooms?.();
+              }}
             >
-              <Icon name="zen" />
-              <span className="tip">{t('zenMode', lang)} (Z)</span>
+              <Icon name="users" />
+              {currentRoomCode && (
+                <span className="rooms-live-dot" aria-hidden="true" />
+              )}
+              {roomUnreadCount > 0 && (
+                <span id="roomsUnreadBadge" className="rooms-unread-badge">
+                  {roomUnreadCount > 99 ? '99+' : roomUnreadCount}
+                </span>
+              )}
+              <span className="tip">
+                {t('rooms', lang)} (G)
+                {roomUnreadCount > 0 ? ` · ${roomUnreadCount} unread` : ''}
+              </span>
             </button>
 
             <button

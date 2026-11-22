@@ -82,16 +82,45 @@ export const INITIAL_SAVED_LINKS: SavedLinkItem[] = [
   },
 ];
 
+export function sanitizeSavedLinks(rawLinks: unknown): SavedLinkItem[] {
+  if (!Array.isArray(rawLinks)) return [];
+  const seen = new Set<string>();
+  const clean: SavedLinkItem[] = [];
+  for (const raw of rawLinks) {
+    if (!raw || typeof raw !== 'object') continue;
+    const item = raw as Record<string, unknown>;
+    const url = String(item.url || '').trim();
+    if (!url) continue;
+    const ytId =
+      typeof item.youtubeId === 'string' && item.youtubeId.trim()
+        ? item.youtubeId.trim()
+        : extractYouTubeId(url) || undefined;
+    const dedupKey = ytId ? `yt:${ytId}` : `url:${url.toLowerCase()}`;
+    if (seen.has(dedupKey)) continue;
+    seen.add(dedupKey);
+    const entry: SavedLinkItem = {
+      id: String(item.id || `link_${Date.now()}_${clean.length}`),
+      url,
+      title: String(item.title || (ytId ? `YouTube: ${ytId}` : 'Video Link')).slice(0, 120),
+      type: item.type === 'bg' || item.type === 'music' ? item.type : 'both',
+      addedAt: Number(item.addedAt) || Date.now(),
+      ...(ytId ? { youtubeId: ytId } : {}),
+    };
+    clean.push(entry);
+  }
+  return clean;
+}
+
 export function getSavedLinks(): SavedLinkItem[] {
   try {
     const raw = safeGetItem(STORAGE_KEY);
-    if (!raw) {
+    if (raw === null) {
       safeSetItem(STORAGE_KEY, JSON.stringify(INITIAL_SAVED_LINKS));
       return [...INITIAL_SAVED_LINKS];
     }
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed)) {
-      return parsed;
+      return sanitizeSavedLinks(parsed);
     }
     return [...INITIAL_SAVED_LINKS];
   } catch {
@@ -176,11 +205,12 @@ export function clearSavedLinks(): void {
 
 export function setAllSavedLinks(links: SavedLinkItem[], broadcastEvent: boolean = true): void {
   try {
-    safeSetItem(STORAGE_KEY, JSON.stringify(links));
+    const clean = sanitizeSavedLinks(links);
+    safeSetItem(STORAGE_KEY, JSON.stringify(clean));
     if (broadcastEvent) {
-      dispatchSavedUpdate(links);
+      dispatchSavedUpdate(clean);
     } else if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
-      window.dispatchEvent(new CustomEvent('peakus:saved-links-local-ui-updated', { detail: links }));
+      window.dispatchEvent(new CustomEvent('peakus:saved-links-local-ui-updated', { detail: clean }));
     }
   } catch {}
 }

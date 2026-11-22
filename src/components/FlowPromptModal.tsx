@@ -125,6 +125,7 @@ export const FlowPromptModal: React.FC<FlowPromptModalProps> = ({
       }}
     >
       <div
+        className="gui-scaled-modal"
         style={{
           width: '100%',
           maxWidth: '376px',

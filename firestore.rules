@@ -22,44 +22,117 @@ service cloud.firestore {
     match /users/{userId} {
       allow get, delete: if isOwner(userId) && isValidId(userId);
       allow list: if false;
-      allow create: if isOwner(userId) 
-                    && isValidId(userId) 
+      allow create: if isOwner(userId)
+                    && isValidId(userId)
                     && request.resource.data.userId == request.auth.uid;
-      allow update: if isOwner(userId) 
-                    && isValidId(userId) 
-                    && request.resource.data.userId == resource.data.userId;
+      allow update: if isOwner(userId)
+                    && isValidId(userId)
+                    && (!('userId' in request.resource.data) || request.resource.data.userId == request.auth.uid)
+                    && (!('userId' in resource.data) || resource.data.userId == request.auth.uid);
     }
 
     // Study Rooms for collaborative group focus
     match /rooms/{roomCode} {
+      function parentRoom() {
+        return get(/databases/$(database)/documents/rooms/$(roomCode)).data;
+      }
+
+      function isRoomHost() {
+        return isSignedIn() && parentRoom().hostId == request.auth.uid;
+      }
+
+      function isNotKicked(roomData) {
+        return !('kickedUserIds' in roomData) || !(request.auth.uid in roomData.kickedUserIds);
+      }
+
+      function isNotMuted(roomData) {
+        return !('mutedUserIds' in roomData) || !(request.auth.uid in roomData.mutedUserIds);
+      }
+
       allow get: if isSignedIn() && isValidId(roomCode);
       allow list: if false;
-      allow create: if isSignedIn() 
-                    && isValidId(roomCode) 
-                    && request.resource.data.hostId == request.auth.uid;
-      allow update: if isSignedIn() 
+      allow create: if isSignedIn()
                     && isValidId(roomCode)
-                    && (resource.data.hostId == request.auth.uid || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['updatedAt', 'memberCount', 'timer']));
-      allow delete: if isSignedIn() 
-                    && isValidId(roomCode) 
+                    && request.resource.data.hostId == request.auth.uid
+                    && request.resource.data.code is string
+                    && request.resource.data.code.size() <= 16
+                    && request.resource.data.name is string
+                    && request.resource.data.name.size() <= 80;
+      allow update: if isSignedIn()
+                    && isValidId(roomCode)
+                    && (
+                      (
+                        resource.data.hostId == request.auth.uid
+                        && (!('mutedUserIds' in request.resource.data) || (request.resource.data.mutedUserIds is list && request.resource.data.mutedUserIds.size() <= 50))
+                        && (!('kickedUserIds' in request.resource.data) || (request.resource.data.kickedUserIds is list && request.resource.data.kickedUserIds.size() <= 50))
+                      )
+                      || (
+                        isNotKicked(resource.data)
+                        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['updatedAt', 'memberCount'])
+                      )
+                    );
+      allow delete: if isSignedIn()
+                    && isValidId(roomCode)
                     && resource.data.hostId == request.auth.uid;
 
       // Room participants & live presence
       match /members/{memberId} {
-        allow read: if isSignedIn();
-        allow create, update: if isSignedIn() 
-                              && (memberId == request.auth.uid || request.resource.data.userId == request.auth.uid);
-        allow delete: if isSignedIn() 
-                      && (memberId == request.auth.uid || get(/databases/$(database)/documents/rooms/$(roomCode)).data.hostId == request.auth.uid);
+        allow read: if isSignedIn() && isValidId(roomCode);
+        allow create: if isSignedIn()
+                      && isValidId(roomCode)
+                      && isValidId(memberId)
+                      && memberId == request.auth.uid
+                      && request.resource.data.userId == request.auth.uid
+                      && request.resource.data.displayName is string
+                      && request.resource.data.displayName.size() <= 80
+                      && isNotKicked(parentRoom())
+                      && (
+                        !('locked' in parentRoom())
+                        || parentRoom().locked == false
+                        || parentRoom().hostId == request.auth.uid
+                      )
+                      && (
+                        !('isHost' in request.resource.data)
+                        || request.resource.data.isHost == false
+                        || parentRoom().hostId == request.auth.uid
+                      );
+        allow update: if isSignedIn()
+                      && isValidId(roomCode)
+                      && isValidId(memberId)
+                      && (
+                        (
+                          memberId == request.auth.uid
+                          && (!('userId' in request.resource.data) || request.resource.data.userId == request.auth.uid)
+                          && isNotKicked(parentRoom())
+                          && (
+                            !('isHost' in request.resource.data)
+                            || request.resource.data.isHost == resource.data.isHost
+                            || parentRoom().hostId == request.auth.uid
+                          )
+                        )
+                        || isRoomHost()
+                      );
+        allow delete: if isSignedIn()
+                      && isValidId(roomCode)
+                      && isValidId(memberId)
+                      && (memberId == request.auth.uid || isRoomHost());
       }
 
-      // Room chat & motivation reactions
+      // Room chat, reactions, nudges & system milestones
       match /messages/{messageId} {
-        allow read: if isSignedIn();
-        allow create: if isSignedIn() 
-                      && request.resource.data.senderId == request.auth.uid;
-        allow update, delete: if isSignedIn() 
-                              && (resource.data.senderId == request.auth.uid || get(/databases/$(database)/documents/rooms/$(roomCode)).data.hostId == request.auth.uid);
+        allow read: if isSignedIn() && isValidId(roomCode);
+        allow create: if isSignedIn()
+                      && isValidId(roomCode)
+                      && isValidId(messageId)
+                      && request.resource.data.senderId == request.auth.uid
+                      && request.resource.data.text is string
+                      && request.resource.data.text.size() <= 400
+                      && isNotKicked(parentRoom())
+                      && isNotMuted(parentRoom());
+        allow update, delete: if isSignedIn()
+                              && isValidId(roomCode)
+                              && isValidId(messageId)
+                              && (resource.data.senderId == request.auth.uid || isRoomHost());
       }
     }
   }

@@ -14,6 +14,7 @@ export interface PomodoroSettings {
   selectedTallyIcon: string;
   autoStartBreaks?: boolean;
   autoStartFocus?: boolean;
+  hardcoreMode?: boolean;
 }
 
 export interface DayFocusStatRecord {
@@ -46,7 +47,32 @@ export const DEFAULT_POMODORO_SETTINGS: PomodoroSettings = {
   selectedTallyIcon: 'growing_tree',
   autoStartBreaks: true,
   autoStartFocus: false,
+  hardcoreMode: false,
 };
+
+export const HARDCORE_REQUIRED_SESSIONS = 4;
+
+export function canSkipPhase(settings: Pick<PomodoroSettings, 'hardcoreMode'>): boolean {
+  return !settings.hardcoreMode;
+}
+
+export function canPauseTimer(settings: Pick<PomodoroSettings, 'hardcoreMode'>): boolean {
+  return !settings.hardcoreMode;
+}
+
+export function shouldLogResetFocus(settings: Pick<PomodoroSettings, 'hardcoreMode'>): boolean {
+  return !settings.hardcoreMode;
+}
+
+export function enforceHardcoreSettings<T extends PomodoroSettings>(settings: T): T {
+  if (!settings.hardcoreMode) return settings;
+  return {
+    ...settings,
+    targetTally: HARDCORE_REQUIRED_SESSIONS,
+    autoStartBreaks: true,
+    autoStartFocus: true,
+  };
+}
 
 /**
  * Format timestamp or Date into local YYYY-MM-DD string
@@ -148,7 +174,12 @@ export function startTimer(state: PomodoroState, now = Date.now()): PomodoroStat
 /**
  * Pause countdown and snapshot remainingMs
  */
-export function pauseTimer(state: PomodoroState, now = Date.now()): PomodoroState {
+export function pauseTimer(
+  state: PomodoroState,
+  now = Date.now(),
+  settings?: Pick<PomodoroSettings, 'hardcoreMode'>
+): PomodoroState {
+  if (settings && !canPauseTimer(settings)) return state;
   if (state.status !== 'running') return state;
   const rem = calculateRemainingMs(state.targetEndTime, state.remainingMs, now);
   return {
@@ -211,9 +242,11 @@ export function completePhase(
   nextState: PomodoroState;
   nextStats: FocusStatsMap;
   completedFocus: boolean;
+  hardcoreCompleted: boolean;
   loggedDurationMs: number;
   dateKey: string;
 } {
+  const effectiveSettings = enforceHardcoreSettings(settings);
   const dateKey = toLocalDateKey(now);
   const existingDayStat: DayFocusStatRecord = currentStats[dateKey] || {
     date: dateKey,
@@ -241,10 +274,13 @@ export function completePhase(
       [dateKey]: updatedDayStat,
     };
 
-    const target = Math.max(1, settings.targetTally || 4);
+    const target = effectiveSettings.hardcoreMode
+      ? HARDCORE_REQUIRED_SESSIONS
+      : Math.max(1, effectiveSettings.targetTally || 4);
+    const hardcoreCompleted = !!effectiveSettings.hardcoreMode && newTally >= HARDCORE_REQUIRED_SESSIONS;
     const nextPhase: PomodoroPhase = newTally < target ? 'SHORT_BREAK' : 'LONG_BREAK';
-    const nextDur = getPhaseDurationMs(nextPhase, settings);
-    const autoStart = !!settings.autoStartBreaks;
+    const nextDur = getPhaseDurationMs(nextPhase, effectiveSettings);
+    const autoStart = !!effectiveSettings.autoStartBreaks;
 
     const nextState: PomodoroState = {
       phase: nextPhase,
@@ -261,6 +297,7 @@ export function completePhase(
       nextState,
       nextStats,
       completedFocus: true,
+      hardcoreCompleted,
       loggedDurationMs: focusDurationMs,
       dateKey,
     };
@@ -281,8 +318,8 @@ export function completePhase(
   // If LONG_BREAK finished, reset cycleTally to 0; if SHORT_BREAK finished, keep cycleTally unchanged
   const nextTally = state.phase === 'LONG_BREAK' ? 0 : state.cycleTally;
   const nextPhase: PomodoroPhase = 'FOCUS';
-  const nextDur = getPhaseDurationMs(nextPhase, settings);
-  const autoStart = !!settings.autoStartFocus;
+  const nextDur = getPhaseDurationMs(nextPhase, effectiveSettings);
+  const autoStart = !!effectiveSettings.autoStartFocus;
 
   const nextState: PomodoroState = {
     phase: nextPhase,
@@ -299,6 +336,7 @@ export function completePhase(
     nextState,
     nextStats,
     completedFocus: false,
+    hardcoreCompleted: false,
     loggedDurationMs: breakDurationMs,
     dateKey,
   };
@@ -315,6 +353,9 @@ export function skipPhase(
   settings: PomodoroSettings,
   now = Date.now()
 ): PomodoroState {
+  if (!canSkipPhase(settings)) {
+    return state;
+  }
   if (state.phase === 'LONG_BREAK') {
     const nextDur = getPhaseDurationMs('FOCUS', settings);
     return {
@@ -481,7 +522,7 @@ export function resetSegmentSavingFocus(
   let nextStats = currentStats;
   let savedFocusMs = 0;
 
-  if (state.phase === 'FOCUS') {
+  if (state.phase === 'FOCUS' && shouldLogResetFocus(settings)) {
     const res = recordPartialFocusStat(currentStats, elapsedMs, now);
     nextStats = res.nextStats;
     savedFocusMs = res.savedMs;
@@ -507,7 +548,7 @@ export function resetWholeSessionSavingFocus(
   let nextStats = currentStats;
   let savedFocusMs = 0;
 
-  if (state.phase === 'FOCUS') {
+  if (state.phase === 'FOCUS' && shouldLogResetFocus(settings)) {
     const res = recordPartialFocusStat(currentStats, elapsedMs, now);
     nextStats = res.nextStats;
     savedFocusMs = res.savedMs;
@@ -565,4 +606,24 @@ export function takeBreakFromFlow(
     startedAt: now,
     sessionStartedAt: now,
   };
+}
+
+/**
+ * Formats an accurate toast message when resetting the whole session,
+ * preserving visibility of how many cycles were completed before resetting back to 0.
+ */
+export function formatWholeSessionResetToast(
+  previousCycle: number,
+  targetCycles: number,
+  savedFocusMs: number,
+  formatDuration: (ms: number) => string
+): string {
+  const target = Math.max(1, targetCycles || 4);
+  const completedBefore = Math.min(target, Math.max(0, previousCycle || 0));
+  const savedSuffix = savedFocusMs >= 1000 ? ` · ${formatDuration(savedFocusMs)} focus saved` : '';
+
+  if (completedBefore > 0) {
+    return `Whole session reset (${completedBefore}/${target} → 0/${target}${savedSuffix}).`;
+  }
+  return `Whole session reset (0/${target}${savedSuffix}).`;
 }

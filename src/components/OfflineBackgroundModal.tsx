@@ -38,7 +38,7 @@ export const OfflineBackgroundModal: React.FC<OfflineBackgroundModalProps> = ({
       }}
     >
       <div
-        className="modal-card"
+        className="modal-card gui-scaled-modal"
         style={{
           width: '100%',
           maxWidth: '460px',
